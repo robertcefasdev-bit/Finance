@@ -1,0 +1,10 @@
+{
+  "description": "Enables interactive button functionality to enhance user engagement and streamline navigation within the web interface for improved usability.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
