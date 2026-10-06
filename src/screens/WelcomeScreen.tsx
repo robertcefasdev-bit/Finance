@@ -1,5 +1,6 @@
 import { useState } from "react";
 import shockLogo from "../assets/shock-logo.png";
+import { S } from "../theme";
 
 export default function WelcomeScreen({
   onSave,
@@ -11,7 +12,7 @@ export default function WelcomeScreen({
   return (
     <div
       style={{
-        background: "#0d0d12",
+        background: S.bg,
         minHeight: "100vh",
         position: "relative",
         display: "flex",
@@ -33,10 +34,10 @@ export default function WelcomeScreen({
           mixBlendMode: "screen",
         }}
       />
-      <h1 style={{ color: "#f1f0ff", fontSize: 26, fontWeight: 700 }}>
+      <h1 style={{ color: S.text, fontSize: 26, fontWeight: 700 }}>
         Bem-vindo(a)!
       </h1>
-      <p style={{ color: "#6b7280", fontSize: 14, margin: "8px 0 24px" }}>
+      <p style={{ color: S.muted, fontSize: 14, margin: "8px 0 24px" }}>
         Como você quer ser chamado(a)?
       </p>
       <input
@@ -48,11 +49,11 @@ export default function WelcomeScreen({
         style={{
           width: "100%",
           maxWidth: 320,
-          background: "#1c1c28",
+          background: S.surface2,
           border: "1px solid #2a2a3a",
           borderRadius: 12,
           padding: "13px 16px",
-          color: "#f1f0ff",
+          color: S.text,
           fontSize: 16,
           outline: "none",
           textAlign: "center",
@@ -70,8 +71,8 @@ export default function WelcomeScreen({
           border: "none",
           background: ok
             ? "linear-gradient(135deg, #7c3aed, #a855f7)"
-            : "#2a2a3a",
-          color: ok ? "#fff" : "#6b7280",
+            : S.border,
+          color: ok ? "#fff" : S.muted,
           fontSize: 15,
           fontWeight: 700,
           cursor: ok ? "pointer" : "default",

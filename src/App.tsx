@@ -5,7 +5,9 @@ import AddExpenseScreen from "./screens/AddExpenseScreen";
 import DebtorsScreen from "./screens/DebtorsScreen";
 import DebtorProfileScreen from "./screens/DebtorProfileScreen";
 import SettingsScreen from "./screens/SettingsScreen";
-import WelcomeScreen from "./screens/WelcomeScreen";
+import { cardUsed } from "./utils/finance";
+import AuthScreen from "./screens/AuthScreen";
+import { readAuth, createAuth, verifyAuth, isSessionActive, setSession, type Auth } from "./utils/auth";
 import AddCardScreen from "./screens/AddCardScreen";
 import type {
   Screen,
@@ -23,31 +25,32 @@ import {
   INITIAL_SALARY,
 } from "./data/mockData";
 import { syncFriend } from "./utils/finance";
+import { S, applyTheme, readStoredTheme, storeTheme, type ThemeMode } from "./theme";
+import { HomeIcon, CalendarIcon, PeopleIcon, GearIcon } from "./components/NavIcons";
 
 const STORAGE_KEY = "finance-app-state-v1";
 
-const S = {
-  bg: "#0d0d12",
-  surface: "#15151e",
-  border: "#2a2a3a",
-  purple: "#a855f7",
-  green: "#22c55e",
-  muted: "#6b7280",
-  text: "#f1f0ff",
-};
 
 interface NavItem {
   screen: Screen;
   icon: string;
   label: string;
+  color?: string;
 }
 
+const NAV_ICONS: Record<string, typeof HomeIcon> = {
+  home: HomeIcon,
+  future: CalendarIcon,
+  debtors: PeopleIcon,
+  settings: GearIcon,
+};
+
 const NAV: NavItem[] = [
-  { screen: "home", icon: "⊞", label: "Home" },
-  { screen: "future", icon: "📅", label: "Projeção" },
+  { screen: "home", icon: "", label: "Home", color: "#a855f7" },
+  { screen: "future", icon: "", label: "Projeção", color: "#3b82f6" },
   { screen: "addExpense", icon: "+", label: "Novo" },
-  { screen: "debtors", icon: "👥", label: "Devedores" },
-  { screen: "settings", icon: "⚙", label: "Config" },
+  { screen: "debtors", icon: "", label: "Devedores", color: "#f97316" },
+  { screen: "settings", icon: "", label: "Config", color: "#14b8a6" },
 ];
 
 function readStoredState() {
@@ -73,6 +76,15 @@ export default function App() {
   const [expenses, setExpenses] = useState<Expense[]>(
     () => readStoredState()?.expenses ?? [],
   );
+  const [auth, setAuth] = useState<Auth | null>(readAuth);
+  const [loggedIn, setLoggedIn] = useState<boolean>(isSessionActive);
+  const [theme, setTheme] = useState<ThemeMode>(readStoredTheme);
+  applyTheme(theme);
+  const toggleTheme = () => {
+    const next: ThemeMode = theme === "dark" ? "light" : "dark";
+    storeTheme(next);
+    setTheme(next);
+  };
   const [userName, setUserName] = useState<string>(
     () => readStoredState()?.userName ?? "",
   );
@@ -116,6 +128,11 @@ export default function App() {
   };
 
   const removeCard = (cardId: string) => {
+    // só exclui se não houver nada em aberto no cartão
+    if (cardUsed(cardId, expenses, friends, fixedExpenses) > 0) return;
+    setFixedExpenses((prev) =>
+      prev.map((fe) => (fe.cardId === cardId ? { ...fe, cardId: undefined } : fe)),
+    );
     setCards((prev) => prev.filter((card) => card.id !== cardId));
     setExpenses((prev) => prev.filter((expense) => expense.cardId !== cardId));
   };
@@ -136,7 +153,6 @@ export default function App() {
     setExpenses([]);
     setSalary(0);
     setFixedExpenses([]);
-    setUserName("");
     window.localStorage.removeItem(STORAGE_KEY);
   };
 
@@ -246,6 +262,20 @@ export default function App() {
     );
   };
 
+  const updateFriendInfo = (friendId: string, name: string, phone: string) => {
+    const initials = name
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((w) => w[0].toUpperCase())
+      .join("");
+    setFriends((prev) =>
+      prev.map((friend) =>
+        friend.id === friendId ? { ...friend, name, phone, initials } : friend,
+      ),
+    );
+  };
+
   const updateFriendPix = (friendId: string, pix: string) => {
     setFriends((prev) =>
       prev.map((friend) => (friend.id === friendId ? { ...friend, pix } : friend)),
@@ -265,14 +295,52 @@ export default function App() {
           (routeData as Friend))
         : null;
 
-  if (!userName.trim()) {
-    return <WelcomeScreen onSave={(name) => setUserName(name.trim())} />;
+  const cardUsage: Record<string, number> = Object.fromEntries(
+    cards.map((c) => [c.id, cardUsed(c.id, expenses, friends, fixedExpenses)]),
+  );
+
+  if (!auth) {
+    return (
+      <AuthScreen
+        key={`${theme}-register`}
+        mode="register"
+        initialName={userName}
+        onSubmit={async (name, password) => {
+          const created = await createAuth(name, password);
+          setAuth(created);
+          setUserName(created.name);
+          setSession(true);
+          setLoggedIn(true);
+          return null;
+        }}
+      />
+    );
+  }
+
+  if (!loggedIn) {
+    return (
+      <AuthScreen
+        key={`${theme}-login`}
+        mode="login"
+        initialName={auth.name}
+        onSubmit={async (name, password) => {
+          if (!(await verifyAuth(auth, name, password))) {
+            return "Nome ou senha incorretos.";
+          }
+          setUserName(auth.name);
+          setSession(true);
+          setLoggedIn(true);
+          return null;
+        }}
+      />
+    );
   }
 
   return (
     <div
+      key={theme}
       style={{
-        background: "#0b0b10",
+        background: S.bg,
         minHeight: "100vh",
         display: "flex",
         justifyContent: "center",
@@ -288,6 +356,28 @@ export default function App() {
           overflow: "hidden",
         }}
       >
+        <button
+          onClick={toggleTheme}
+          aria-label={theme === "dark" ? "Mudar para tema claro" : "Mudar para tema escuro"}
+          style={{
+            position: "absolute",
+            top: 10,
+            right: 14,
+            zIndex: 60,
+            width: 34,
+            height: 34,
+            borderRadius: "50%",
+            border: `1px solid ${S.border}`,
+            background: S.surface,
+            fontSize: 16,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {theme === "dark" ? "☀️" : "🌙"}
+        </button>
         <div
           style={{ height: "100%", overflowY: "auto" }}
           className="scrollbar-hide"
@@ -301,6 +391,10 @@ export default function App() {
               fixedExpenses={fixedExpenses}
               salary={salary}
               userName={userName}
+              onLogout={() => {
+                setSession(false);
+                setLoggedIn(false);
+              }}
               onRemoveExpense={removeExpense}
               onTogglePaid={toggleExpensePaid}
             />
@@ -319,6 +413,7 @@ export default function App() {
               navigate={navigate}
               cards={cards}
               friends={friends}
+              cardUsage={cardUsage}
               onAddExpense={addExpense}
               onAddDebt={addDebtToFriend}
               routeData={routeData}
@@ -338,10 +433,12 @@ export default function App() {
             <DebtorProfileScreen
               navigate={navigate}
               friend={currentFriend}
+              cardUsage={cardUsage}
               cards={cards}
               onAddDebt={addDebtToFriend}
               onReactivateDebt={reactivateDebt}
               onUpdatePix={updateFriendPix}
+              onUpdateFriend={updateFriendInfo}
               onMarkDebtPaid={markDebtPaid}
               onDeleteDebt={deleteDebt}
               initialOpenAddDebt={Boolean(
@@ -354,6 +451,7 @@ export default function App() {
           )}
           {screen === "settings" && (
             <SettingsScreen
+              cardUsage={cardUsage}
               navigate={navigate}
               cards={cards}
               expenses={expenses}
@@ -368,6 +466,10 @@ export default function App() {
               onToggleFixedExpense={toggleFixedExpense}
               onAddFixedExpense={addFixedExpense}
               onClearAll={clearAllData}
+              onLogout={() => {
+                setSession(false);
+                setLoggedIn(false);
+              }}
             />
           )}
           {screen === "addCard" && (
@@ -441,12 +543,20 @@ export default function App() {
                   ) : (
                     <span
                       style={{
-                        fontSize: 20,
-                        filter: active ? "none" : "grayscale(1) opacity(0.5)",
-                        transition: "filter 0.18s",
+                        display: "flex",
+                        opacity: active ? 1 : 0.55,
+                        transition: "opacity 0.18s",
                       }}
                     >
-                      {item.icon}
+                      {(() => {
+                        const Icon = NAV_ICONS[item.screen];
+                        return (
+                          <Icon
+                            size={22}
+                            color={active ? item.color : S.muted}
+                          />
+                        );
+                      })()}
                     </span>
                   )}
                   {!isAdd && (
@@ -454,7 +564,7 @@ export default function App() {
                       style={{
                         fontSize: 9,
                         fontWeight: active ? 700 : 400,
-                        color: active ? S.purple : S.muted,
+                        color: active ? (item.color ?? S.purple) : S.muted,
                         fontFamily: "'JetBrains Mono', monospace",
                         letterSpacing: "0.05em",
                         transition: "color 0.18s",

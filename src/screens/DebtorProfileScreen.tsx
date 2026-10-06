@@ -2,22 +2,8 @@ import { useEffect, useState } from "react";
 import { fmt } from "../data/mockData";
 import type { Card, Friend, Debt, Screen } from "../data/mockData";
 import { getCurrentMonthOwed } from "../utils/finance";
+import { S } from "../theme";
 
-const S = {
-  bg: "#0d0d12",
-  surface: "#15151e",
-  surface2: "#1c1c28",
-  border: "#2a2a3a",
-  purple: "#a855f7",
-  purpleDim: "#7c3aed",
-  green: "#22c55e",
-  greenDim: "#16a34a",
-  muted: "#6b7280",
-  text: "#f1f0ff",
-  text2: "#a1a1b5",
-  orange: "#f97316",
-  blue: "#3b82f6",
-};
 
 const CARD_COLOR: Record<string, string> = {
   nubank: S.purple,
@@ -41,6 +27,7 @@ const CASH_CARD: Card = {
 };
 
 interface Props {
+  cardUsage: Record<string, number>;
   navigate: (s: Screen, data?: unknown) => void;
   friend: Friend;
   cards: Card[];
@@ -49,10 +36,12 @@ interface Props {
   onDeleteDebt: (friendId: string, debtId: string) => void;
   onReactivateDebt: (friendId: string, debtId: string) => void;
   onUpdatePix: (friendId: string, pix: string) => void;
+  onUpdateFriend: (friendId: string, name: string, phone: string) => void;
   initialOpenAddDebt?: boolean;
 }
 
 export default function DebtorProfileScreen({
+  cardUsage,
   navigate,
   friend,
   cards,
@@ -61,6 +50,7 @@ export default function DebtorProfileScreen({
   onDeleteDebt,
   onReactivateDebt,
   onUpdatePix,
+  onUpdateFriend,
   initialOpenAddDebt = false,
 }: Props) {
   const [debts, setDebts] = useState<Debt[]>(friend.debts);
@@ -92,6 +82,14 @@ export default function DebtorProfileScreen({
   const installmentsCount = parseInt(newInstall, 10) || 1;
   const installmentValue = parsedTotalAmount / installmentsCount;
 
+  const [editingInfo, setEditingInfo] = useState(false);
+  const [editName, setEditName] = useState(friend.name);
+  const [editPhone, setEditPhone] = useState(friend.phone ?? "");
+  const saveInfo = () => {
+    if (!editName.trim()) return;
+    onUpdateFriend(friend.id, editName.trim(), editPhone.trim());
+    setEditingInfo(false);
+  };
   const [pix, setPix] = useState(friend.pix ?? "");
   const byCard = [...cards, CASH_CARD]
     .map((card) => ({
@@ -122,8 +120,14 @@ export default function DebtorProfileScreen({
     showToast("Dívida removida 🗑");
   };
 
+  const debtCard = cards.find((c) => c.id === newCard);
+  const debtAvailable = debtCard
+    ? debtCard.limit - (cardUsage[debtCard.id] ?? 0)
+    : Infinity;
+  const debtOverLimit = !!debtCard && parsedTotalAmount > debtAvailable;
+
   const handleAddDebt = () => {
-    if (!newTitle.trim() || !newAmount) return;
+    if (!newTitle.trim() || !newAmount || debtOverLimit) return;
     const nd: Debt = {
       id: `debt-${Date.now()}`,
       title: newTitle.trim(),
@@ -175,6 +179,16 @@ export default function DebtorProfileScreen({
         >
           ← Devedores
         </button>
+        {editingInfo && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16, background: S.surface, border: `1px solid ${S.border}`, borderRadius: 14, padding: 14 }}>
+            <input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Nome" style={{ width: "100%", background: S.surface2, border: `1px solid ${S.border}`, borderRadius: 10, padding: "10px 12px", color: S.text, fontSize: 14, outline: "none" }} />
+            <input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="Telefone (WhatsApp)" style={{ width: "100%", background: S.surface2, border: `1px solid ${S.border}`, borderRadius: 10, padding: "10px 12px", color: S.text, fontSize: 14, outline: "none" }} />
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={saveInfo} style={{ flex: 1, padding: 10, borderRadius: 10, border: "none", background: `${S.purple}30`, color: S.purple, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Salvar</button>
+              <button onClick={() => { setEditingInfo(false); setEditName(friend.name); setEditPhone(friend.phone ?? ""); }} style={{ padding: "10px 14px", borderRadius: 10, border: "none", background: S.surface2, color: S.muted, fontSize: 13, cursor: "pointer" }}>Cancelar</button>
+            </div>
+          </div>
+        )}
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <div
             style={{
@@ -203,6 +217,12 @@ export default function DebtorProfileScreen({
                 📱 {friend.phone}
               </p>
             )}
+            <button
+              onClick={() => setEditingInfo(true)}
+              style={{ marginTop: 6, background: "none", border: "none", color: S.purple, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0 }}
+            >
+              ✏️ Editar devedor
+            </button>
           </div>
           <div style={{ marginLeft: "auto" }}>
             <span
@@ -814,6 +834,11 @@ export default function DebtorProfileScreen({
                 ))}
               </div>
             </div>
+            {debtOverLimit && debtCard && (
+              <p style={{ color: "#ef4444", fontSize: 13, marginBottom: 10, textAlign: "center" }}>
+                ⚠️ Passa do limite do cartão {debtCard.name}. Disponível: {fmt(Math.max(debtAvailable, 0))}
+              </p>
+            )}
             <button
               onClick={handleAddDebt}
               style={{

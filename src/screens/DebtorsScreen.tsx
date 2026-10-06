@@ -1,20 +1,8 @@
 import { useState } from "react";
 import { fmt } from "../data/mockData";
 import type { Friend, Screen } from "../data/mockData";
+import { S } from "../theme";
 
-const S = {
-  bg: "#0d0d12",
-  surface: "#15151e",
-  surface2: "#1c1c28",
-  border: "#2a2a3a",
-  purple: "#a855f7",
-  purpleDim: "#7c3aed",
-  green: "#22c55e",
-  muted: "#6b7280",
-  text: "#f1f0ff",
-  text2: "#a1a1b5",
-  orange: "#f97316",
-};
 
 interface Props {
   navigate: (s: Screen, data?: unknown) => void;

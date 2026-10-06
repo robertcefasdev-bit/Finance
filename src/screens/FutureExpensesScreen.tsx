@@ -1,22 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { fmt } from "../data/mockData";
+import { installmentNumber, monthlyAmount } from "../utils/finance";
 import type { Card, Expense, FixedExpense, Friend } from "../data/mockData";
+import { S } from "../theme";
 
-const S = {
-  bg: "#0d0d12",
-  surface: "#15151e",
-  surface2: "#1c1c28",
-  border: "#2a2a3a",
-  purple: "#a855f7",
-  purpleDim: "#7c3aed",
-  green: "#22c55e",
-  greenDim: "#16a34a",
-  muted: "#6b7280",
-  text: "#f1f0ff",
-  text2: "#a1a1b5",
-  orange: "#f97316",
-  blue: "#3b82f6",
-};
 
 const CARD_COLOR: Record<string, string> = {
   nubank: S.purple,
@@ -72,38 +59,39 @@ export default function FutureExpensesScreen({
       ...friends.flatMap((friend) =>
         friend.debts.filter((debt) => !debt.paid).map((debt) => debt.total),
       ),
+      ...expenses.filter((e) => !e.paid).map((e) => e.installments ?? 1),
     );
     const months = Array.from({ length: maxInstallments }, (_, index) => {
       const date = new Date(today.getFullYear(), today.getMonth() + index, 1);
       return {
         label: `${monthNames[date.getMonth()]} ${date.getFullYear()}`,
         monthNumber: index + 1,
+        date,
       };
     });
 
     return months
-      .map(({ label, monthNumber }) => {
+      .map(({ label, monthNumber, date }) => {
+        const monthExpenses = expenses.filter(
+          (item) => !item.paid && monthNumber <= (item.installments ?? 1),
+        );
         const expensesForMonth =
-          expenses
-            .filter((item) => !item.paid)
-            .reduce((sum, item) => sum + item.amount, 0) +
+          monthExpenses.reduce((sum, item) => sum + monthlyAmount(item), 0) +
           totalFixed;
         const balance = salary - expensesForMonth;
         const activeInstallments = friends.flatMap((friend) =>
           friend.debts
             .filter(
-              (debt) =>
-                !debt.paid &&
-                debt.current <= monthNumber &&
-                monthNumber <= debt.total,
+              (debt) => !debt.paid && installmentNumber(debt, date) !== null,
             )
             .map((debt) => ({
               ...debt,
+              current: installmentNumber(debt, date) as number,
               personName: friend.name,
               personInitials: friend.initials,
               personColor: friend.color,
               isOwner: false,
-              displayCurrent: Math.min(monthNumber, debt.total),
+              displayCurrent: installmentNumber(debt, date) as number,
             })),
         );
         const receivable = activeInstallments.reduce(
@@ -111,14 +99,14 @@ export default function FutureExpensesScreen({
           0,
         );
         const myItems = [
-          ...expenses
-            .filter((item) => !item.paid)
-            .map((item) => ({
-              id: `mine-${label}-${item.id}`,
-              title: item.title,
-              category: item.cardId === "cash" ? "Dinheiro" : item.category,
-              amount: item.amount,
-            })),
+          ...monthExpenses.map((item) => ({
+            id: `mine-${label}-${item.id}`,
+            title: item.title,
+            category: item.cardId === "cash" ? "Dinheiro" : item.category,
+            amount: monthlyAmount(item),
+            current: monthNumber,
+            total: item.installments ?? 1,
+          })),
           ...activeFixed.map((item) => ({
             id: `mine-${label}-${item.id}`,
             title: item.name,
@@ -128,8 +116,6 @@ export default function FutureExpensesScreen({
         ].map((item) => ({
           ...item,
           cardId: "",
-          current: 1,
-          total: 1,
           paid: false,
           personName: "Eu",
           personInitials: "EU",
@@ -512,10 +498,7 @@ export default function FutureExpensesScreen({
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {filtered.map((item) => {
-              const displayCurrent = Math.min(
-                monthData.monthNumber,
-                item.total,
-              );
+              const displayCurrent = item.current;
               const installPct = (displayCurrent / item.total) * 100;
               const cardColor =
                 cards.find((card) => card.id === item.cardId)?.color ?? S.muted;

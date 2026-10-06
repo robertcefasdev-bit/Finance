@@ -6,9 +6,52 @@ import type {
   Friend,
 } from "../data/mockData";
 
+// Valor da parcela do mês de uma despesa minha (valor total ÷ parcelas)
+export function monthlyAmount(expense: Expense) {
+  return (
+    Math.round((expense.amount / (expense.installments || 1)) * 100) / 100
+  );
+}
+
+// Quanto do limite do cartão já está comprometido:
+// minhas despesas não pagas (valor total), dívidas dos devedores (parcelas que faltam)
+// e despesas fixas ativas lançadas no cartão (1 mês).
+export function cardUsed(
+  cardId: string,
+  expenses: Expense[],
+  friends: Friend[],
+  fixedExpenses: FixedExpense[],
+) {
+  const mine = expenses
+    .filter((e) => e.cardId === cardId && !e.paid)
+    .reduce((sum, e) => sum + e.amount, 0);
+  const debtors = friends
+    .flatMap((f) => f.debts)
+    .filter((d) => d.cardId === cardId && !d.paid)
+    .reduce((sum, d) => sum + d.amount * Math.max(d.total - d.current + 1, 1), 0);
+  const fixed = fixedExpenses
+    .filter((fe) => fe.active && fe.cardId === cardId)
+    .reduce((sum, fe) => sum + fe.amount, 0);
+  return Math.round((mine + debtors + fixed) * 100) / 100;
+}
+
+// Número da parcela da dívida no mês de "ref" (null = não há parcela nesse mês)
+export function installmentNumber(debt: Debt, ref: Date): number | null {
+  const now = new Date();
+  const [y, m] = (
+    debt.startMonth ?? `${now.getFullYear()}-${now.getMonth() + 1}`
+  )
+    .split("-")
+    .map(Number);
+  const diff = (ref.getFullYear() - y) * 12 + (ref.getMonth() + 1 - m);
+  const n = debt.current + diff;
+  return n >= debt.current && n <= debt.total ? n : null;
+}
+
 export function getCurrentMonthOwed(debts: Debt[]) {
+  const now = new Date();
   return debts
-    .filter((debt) => !debt.paid)
+    .filter((debt) => !debt.paid && installmentNumber(debt, now) !== null)
     .reduce((sum, debt) => sum + debt.amount, 0);
 }
 

@@ -1,18 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Card, Screen } from "../data/mockData";
+import { S } from "../theme";
 
-const S = {
-  bg: "#0d0d12",
-  surface: "#15151e",
-  surface2: "#1c1c28",
-  border: "#2a2a3a",
-  purple: "#a855f7",
-  purpleDim: "#7c3aed",
-  green: "#22c55e",
-  muted: "#6b7280",
-  text: "#f1f0ff",
-  text2: "#a1a1b5",
-};
 
 const PRESET_COLORS = [
   "#a855f7",
@@ -69,7 +58,13 @@ export default function AddCardScreen({
   useEffect(() => {
     if (!editingCard) return;
     setCardName(editingCard.name);
-    setBank(editingCard.bank);
+    if (BANKS.includes(editingCard.bank)) {
+      setBank(editingCard.bank);
+    } else {
+      setBank("Outro");
+      setShowBankInput(true);
+      setCustomBank(editingCard.bank);
+    }
     setLimit(String(editingCard.limit));
     setClosing(String(editingCard.closing));
     setDue(String(editingCard.due));
@@ -77,12 +72,13 @@ export default function AddCardScreen({
   }, [editingCard]);
 
   const handleSave = () => {
-    if (!cardName || !bank || !limit || !closing || !due) return;
+    if (!isValid) return;
+    const finalBank = bank === "Outro" ? customBank.trim() : bank;
 
     const parsedCard = {
       id: editingCard?.id ?? `card-${Date.now()}`,
       name: cardName.trim(),
-      bank,
+      bank: finalBank,
       limit: parseFloat(limit),
       closing: parseInt(closing, 10),
       due: parseInt(due, 10),
@@ -101,7 +97,13 @@ export default function AddCardScreen({
     }, 1500);
   };
 
-  const isValid = cardName && bank && limit && closing && due;
+  const isValid =
+    cardName &&
+    bank &&
+    (bank !== "Outro" || customBank.trim()) &&
+    limit &&
+    closing &&
+    due;
 
   return (
     <div
@@ -215,7 +217,7 @@ export default function AddCardScreen({
               marginBottom: 4,
             }}
           >
-            {bank || "Banco"}
+            {bank === "Outro" ? customBank.trim() || "Banco" : bank || "Banco"}
           </p>
           <p
             style={{
@@ -343,7 +345,10 @@ export default function AddCardScreen({
             {BANKS.map((b) => (
               <button
                 key={b}
-                onClick={() => setBank(b)}
+                onClick={() => {
+                  setBank(b);
+                  setShowBankInput(b === "Outro");
+                }}
                 style={{
                   padding: "7px 14px",
                   borderRadius: 16,

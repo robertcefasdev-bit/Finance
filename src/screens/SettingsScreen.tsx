@@ -1,21 +1,8 @@
 import { useState } from "react";
 import { fmt } from "../data/mockData";
 import type { Card, Expense, FixedExpense, Friend, Screen } from "../data/mockData";
+import { S } from "../theme";
 
-const S = {
-  bg: "#0d0d12",
-  surface: "#15151e",
-  surface2: "#1c1c28",
-  border: "#2a2a3a",
-  purple: "#a855f7",
-  purpleDim: "#7c3aed",
-  green: "#22c55e",
-  muted: "#6b7280",
-  text: "#f1f0ff",
-  text2: "#a1a1b5",
-  orange: "#f97316",
-  blue: "#3b82f6",
-};
 
 const CARD_COLOR: Record<string, string> = {
   nubank: S.purple,
@@ -24,6 +11,7 @@ const CARD_COLOR: Record<string, string> = {
 };
 
 interface Props {
+  cardUsage: Record<string, number>;
   navigate: (s: Screen, data?: unknown) => void;
   cards: Card[];
   expenses: Expense[];
@@ -38,9 +26,11 @@ interface Props {
   onAddFixedExpense: (expense: FixedExpense) => void;
   onRemoveFixedExpense: (expenseId: string) => void;
   onClearAll: () => void;
+  onLogout: () => void;
 }
 
 export default function SettingsScreen({
+  cardUsage,
   navigate,
   cards,
   expenses,
@@ -50,6 +40,7 @@ export default function SettingsScreen({
   onUpdateFixedExpense,
   onRemoveFixedExpense,
   onRemoveCard,
+  onLogout,
   onEditCard,
   onUpdateSalary,
   onToggleFixedExpense,
@@ -58,8 +49,10 @@ export default function SettingsScreen({
   const [salarySaved, setSalarySaved] = useState(false);
   const [newExpenseName, setNewExpenseName] = useState("");
   const [newExpenseAmount, setNewExpenseAmount] = useState("");
+  const [newFixedCard, setNewFixedCard] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [editCard, setEditCard] = useState("");
   const [editAmount, setEditAmount] = useState("");
   const [showBankInput, setShowBankInput] = useState(false);
   const [customBank, setCustomBank] = useState("");
@@ -71,16 +64,29 @@ export default function SettingsScreen({
     setEditingId(fe.id);
     setEditName(fe.name);
     setEditAmount(String(fe.amount));
+    setEditCard(fe.cardId ?? "");
   };
 
   const saveEdit = (fe: FixedExpense) => {
     const amount = parseFloat(editAmount.replace(",", "."));
     if (!editName.trim() || !amount) return;
-    onUpdateFixedExpense({ ...fe, name: editName.trim(), amount });
+    onUpdateFixedExpense({
+      ...fe,
+      name: editName.trim(),
+      amount,
+      cardId: editCard || undefined,
+    });
     setEditingId(null);
   };
 
   const removeCard = (id: string) => {
+    const pending = cardUsage[id] ?? 0;
+    if (pending > 0) {
+      window.alert(
+        `Não é possível excluir este cartão: ainda há ${fmt(pending)} em aberto nele (suas despesas, dívidas de devedores ou despesas fixas). Quite tudo antes de excluir.`,
+      );
+      return;
+    }
     onRemoveCard(id);
   };
 
@@ -90,14 +96,27 @@ export default function SettingsScreen({
     setTimeout(() => setSalarySaved(false), 1500);
   };
 
+  const [fixedError, setFixedError] = useState("");
+
   const handleAddFixed = () => {
     if (!newExpenseName.trim() || !newExpenseAmount) return;
+    const fixedValue = parseFloat(newExpenseAmount.replace(",", "."));
+    const fixedCard = cards.find((c) => c.id === newFixedCard);
+    if (fixedCard && fixedValue > fixedCard.limit - (cardUsage[fixedCard.id] ?? 0)) {
+      setFixedError(
+        `Passa do limite do cartão ${fixedCard.name}. Disponível: ${fmt(Math.max(fixedCard.limit - (cardUsage[fixedCard.id] ?? 0), 0))}`,
+      );
+      return;
+    }
+    setFixedError("");
     onAddFixedExpense({
       id: `fe-${Date.now()}`,
       name: newExpenseName.trim(),
       amount: parseFloat(newExpenseAmount.replace(",", ".")),
       active: true,
+      cardId: newFixedCard || undefined,
     });
+    setNewFixedCard("");
     setNewExpenseName("");
     setNewExpenseAmount("");
   };
@@ -229,6 +248,26 @@ export default function SettingsScreen({
         </div>
       </div>
 
+      {/* Sair */}
+      <div style={{ margin: "20px 20px 0" }}>
+        <button
+          onClick={onLogout}
+          style={{
+            width: "100%",
+            padding: "12px",
+            borderRadius: 14,
+            border: `1px solid ${S.border}`,
+            background: S.surface,
+            color: S.text,
+            fontSize: 14,
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+        >
+          🔒 Sair da conta
+        </button>
+      </div>
+
       {/* Credit Cards */}
       <div style={{ margin: "20px 20px 0" }}>
         <div
@@ -262,14 +301,7 @@ export default function SettingsScreen({
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {cards.map((card) => {
             const color = card.color || CARD_COLOR[card.id] || S.purple;
-            const mySpent = expenses
-              .filter((expense) => expense.cardId === card.id)
-              .reduce((sum, expense) => sum + expense.amount, 0);
-            const debtorsSpent = friends
-              .flatMap((friend) => friend.debts)
-              .filter((debt) => debt.cardId === card.id && !debt.paid)
-              .reduce((sum, debt) => sum + debt.amount, 0);
-            const spentAmount = mySpent + debtorsSpent;
+            const spentAmount = cardUsage[card.id] ?? 0;
             const usedPercent =
               card.limit > 0
                 ? Math.min((spentAmount / card.limit) * 100, 100)
@@ -495,6 +527,16 @@ export default function SettingsScreen({
                     onChange={(e) => setEditAmount(e.target.value)}
                     style={{ width: 80, background: S.surface2, border: `1px solid ${S.border}`, borderRadius: 8, padding: "7px 10px", color: S.text, fontSize: 13, outline: "none" }}
                   />
+                  <select
+                    value={editCard}
+                    onChange={(e) => setEditCard(e.target.value)}
+                    style={{ flexBasis: "100%", background: S.surface2, border: `1px solid ${S.border}`, borderRadius: 8, padding: "7px 10px", color: S.text, fontSize: 13, outline: "none" }}
+                  >
+                    <option value="">💵 Sem cartão</option>
+                    {cards.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name} · {c.bank}</option>
+                    ))}
+                  </select>
                   <button onClick={() => saveEdit(fe)} style={{ border: "none", borderRadius: 8, padding: "7px 12px", background: `${S.purple}30`, color: S.purple, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Salvar</button>
                   <button onClick={() => setEditingId(null)} style={{ border: "none", borderRadius: 8, padding: "7px 10px", background: S.surface2, color: S.muted, fontSize: 12, cursor: "pointer" }}>Cancelar</button>
                 </div>
@@ -512,6 +554,7 @@ export default function SettingsScreen({
                   }}
                 >
                   {fmt(fe.amount)}/mês
+                  {fe.cardId ? ` · ${cards.find((c) => c.id === fe.cardId)?.name ?? "cartão"}` : ""}
                 </p>
               </div>
               )}
@@ -618,6 +661,31 @@ export default function SettingsScreen({
                 }}
               />
             </div>
+            <select
+              value={newFixedCard}
+              onChange={(e) => setNewFixedCard(e.target.value)}
+              style={{
+                width: "100%",
+                background: S.surface2,
+                border: `1px solid ${S.border}`,
+                borderRadius: 10,
+                padding: "9px 10px",
+                color: S.text,
+                fontSize: 13,
+                outline: "none",
+                marginBottom: 8,
+              }}
+            >
+              <option value="">💵 Sem cartão (dinheiro/débito)</option>
+              {cards.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} · {c.bank}
+                </option>
+              ))}
+            </select>
+            {fixedError && (
+              <p style={{ color: "#ef4444", fontSize: 12, marginBottom: 8 }}>⚠️ {fixedError}</p>
+            )}
             <button
               onClick={handleAddFixed}
               style={{

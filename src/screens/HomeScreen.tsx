@@ -11,6 +11,7 @@ import {
   Cell,
 } from "recharts";
 import { fmt } from "../data/mockData";
+import { monthlyAmount } from "../utils/finance";
 import type {
   Screen,
   Card,
@@ -18,21 +19,8 @@ import type {
   FixedExpense,
   Friend,
 } from "../data/mockData";
+import { S } from "../theme";
 
-const S = {
-  bg: "#0d0d12",
-  surface: "#15151e",
-  surface2: "#1c1c28",
-  border: "#2a2a3a",
-  purple: "#a855f7",
-  purpleDim: "#7c3aed",
-  green: "#22c55e",
-  muted: "#6b7280",
-  text: "#f1f0ff",
-  text2: "#a1a1b5",
-  orange: "#f97316",
-  blue: "#3b82f6",
-};
 
 const CARD_COLOR: Record<string, string> = {
   nubank: S.purple,
@@ -48,6 +36,7 @@ interface Props {
   fixedExpenses: FixedExpense[];
   salary: number;
   userName: string;
+  onLogout: () => void;
   onRemoveExpense: (expenseId: string) => void;
   onTogglePaid: (expenseId: string) => void;
 }
@@ -60,10 +49,11 @@ export default function HomeScreen({
   fixedExpenses,
   salary,
   userName,
+  onLogout,
   onRemoveExpense,
   onTogglePaid,
 }: Props) {
-  const [chartType, setChartType] = useState<"pie" | "line">("line");
+  const [chartType, setChartType] = useState<"pie" | "line">("pie");
 
   const totalOwed = friends.reduce((s, f) => s + f.totalOwed, 0);
   const activeFixedExpenses = fixedExpenses
@@ -71,7 +61,7 @@ export default function HomeScreen({
     .reduce((sum, expense) => sum + expense.amount, 0);
   const baseExpenses = expenses
     .filter((e) => !e.paid)
-    .reduce((s, e) => s + e.amount, 0);
+    .reduce((s, e) => s + monthlyAmount(e), 0);
   const totalExpenses = baseExpenses + activeFixedExpenses;
   const chartData = Array.from({ length: 6 }, (_, index) => ({
     month: `${["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"][new Date().getMonth() + index >= 12 ? new Date().getMonth() + index - 12 : new Date().getMonth() + index]} ${new Date().getFullYear() + (new Date().getMonth() + index >= 12 ? 1 : 0)}`,
@@ -148,27 +138,41 @@ export default function HomeScreen({
             Olá, {userName} 👋
           </h1>
         </div>
-        <div
+        <button
+          onClick={() => {
+            if (window.confirm("Sair da conta?")) onLogout();
+          }}
+          aria-label="Sair da conta"
+          title="Sair"
           style={{
             width: 42,
             height: 42,
             borderRadius: "50%",
+            border: "none",
             background: `linear-gradient(135deg, ${S.purpleDim}, ${S.purple})`,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: 13,
-            fontWeight: 700,
             color: "#fff",
+            cursor: "pointer",
           }}
         >
-          {userName
-            .split(" ")
-            .filter(Boolean)
-            .slice(0, 2)
-            .map((w) => w[0].toUpperCase())
-            .join("")}
-        </div>
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
+          </svg>
+        </button>
       </div>
 
       {/* Balance bar */}
@@ -271,7 +275,7 @@ export default function HomeScreen({
               gap: 2,
             }}
           >
-            {(["line", "pie"] as const).map((t) => (
+            {(["pie", "line"] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setChartType(t)}
@@ -522,7 +526,7 @@ export default function HomeScreen({
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <p style={{ fontSize: 14, fontWeight: 700, color: S.text }}>
-                    {fmt(exp.amount)}
+                    {fmt("kind" in exp && exp.kind === "fixed" ? exp.amount : monthlyAmount(exp as Expense))}
                   </p>
                   {!isFixed && (
                     <button

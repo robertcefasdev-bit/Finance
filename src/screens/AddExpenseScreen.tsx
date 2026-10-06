@@ -1,20 +1,8 @@
 import { useState } from "react";
 import { fmt } from "../data/mockData";
 import type { Screen, Card, Friend, Expense, Debt } from "../data/mockData";
+import { S } from "../theme";
 
-const S = {
-  bg: "#0d0d12",
-  surface: "#15151e",
-  surface2: "#1c1c28",
-  border: "#2a2a3a",
-  purple: "#a855f7",
-  purpleDim: "#7c3aed",
-  green: "#22c55e",
-  greenDim: "#16a34a",
-  muted: "#6b7280",
-  text: "#f1f0ff",
-  text2: "#a1a1b5",
-};
 
 const CATEGORIES = [
   { label: "Tech", icon: "💻" },
@@ -31,6 +19,7 @@ interface Props {
   navigate: (s: Screen, data?: unknown) => void;
   cards: Card[];
   friends: Friend[];
+  cardUsage: Record<string, number>;
   onAddExpense: (expense: Expense) => void;
   onAddDebt: (friendId: string, debt: Debt) => void;
   routeData?: unknown;
@@ -41,6 +30,7 @@ export default function AddExpenseScreen({
   navigate,
   cards,
   friends,
+  cardUsage,
   onAddExpense,
   onAddDebt,
   routeData,
@@ -59,6 +49,16 @@ export default function AddExpenseScreen({
   const numAmount = parseFloat(amount.replace(",", ".")) || 0;
   const numSplit = selectedFriends.length + 1;
   const perPerson = numAmount / numSplit;
+  const selectedCard = cards.find((c) => c.id === cardId);
+  const availableLimit = selectedCard
+    ? selectedCard.limit - (cardUsage[selectedCard.id] ?? 0)
+    : Infinity;
+  const overLimit = !!selectedCard && numAmount > availableLimit;
+  const instN = parseInt(installments, 10) || 1;
+  const perLabel =
+    instN > 1
+      ? `${instN}× de ${fmt(perPerson / instN)}`
+      : fmt(perPerson);
 
   const toggleFriend = (id: string) => {
     setSelectedFriends((prev) =>
@@ -67,7 +67,7 @@ export default function AddExpenseScreen({
   };
 
   const handleSave = () => {
-    if (!amount || !category || !cardId) return;
+    if (!amount || !category || !cardId || overLimit) return;
 
     const parsedAmount = parseFloat(amount.replace(",", ".")) || 0;
     const parsedInstallments = parseInt(installments, 10) || 1;
@@ -86,6 +86,7 @@ export default function AddExpenseScreen({
         CATEGORIES.find((item) => item.label === category)?.icon ?? "📦",
       cardId,
       amount: Math.round(myShare * 100) / 100,
+      installments: parsedInstallments,
       date: date || new Date().toISOString().split("T")[0],
     };
 
@@ -101,6 +102,7 @@ export default function AddExpenseScreen({
           amount: shareAmount,
           current: 1,
           total: parsedInstallments,
+          startMonth: (date || new Date().toISOString().split("T")[0]).slice(0, 7),
           paid: false,
         };
         onAddDebt(friendId, debt);
@@ -683,7 +685,7 @@ export default function AddExpenseScreen({
                           fontFamily: "'JetBrains Mono', monospace",
                         }}
                       >
-                        {fmt(perPerson)} / pessoa
+                        {perLabel} / pessoa
                       </p>
                     </div>
                     <div style={{ textAlign: "right" }}>
@@ -691,7 +693,7 @@ export default function AddExpenseScreen({
                       <p
                         style={{ color: S.text, fontSize: 14, fontWeight: 700 }}
                       >
-                        {fmt(perPerson)}
+                        {perLabel}
                       </p>
                     </div>
                   </div>
@@ -701,10 +703,16 @@ export default function AddExpenseScreen({
           </div>
         </div>
 
+        {overLimit && selectedCard && (
+          <p style={{ color: "#ef4444", fontSize: 13, marginBottom: 12, textAlign: "center" }}>
+            ⚠️ Passa do limite do cartão {selectedCard.name}. Disponível: {fmt(Math.max(availableLimit, 0))}
+          </p>
+        )}
+
         {/* Save button */}
         <button
           onClick={handleSave}
-          disabled={!amount || !category || !cardId}
+          disabled={!amount || !category || !cardId || overLimit}
           style={{
             width: "100%",
             padding: "16px",
