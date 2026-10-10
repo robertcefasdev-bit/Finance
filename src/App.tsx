@@ -7,7 +7,7 @@ import DebtorProfileScreen from "./screens/DebtorProfileScreen";
 import SettingsScreen from "./screens/SettingsScreen";
 import { cardUsed } from "./utils/finance";
 import AuthScreen from "./screens/AuthScreen";
-import { readAuth, createAuth, verifyAuth, isSessionActive, setSession, type Auth } from "./utils/auth";
+import { api } from "./utils/api";
 import AddCardScreen from "./screens/AddCardScreen";
 import type {
   Screen,
@@ -67,17 +67,21 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>("home");
   const [routeData, setRouteData] = useState<unknown>(null);
   const [tabScreen, setTabScreen] = useState<Screen>("home");
-  const [cards, setCards] = useState<Card[]>(
-    () => readStoredState()?.cards ?? [],
+  const [cards, setCards] = useState<Card[]>([]);
+  const [friends, setFriends] = useState<Friend[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [session, setSession] = useState<"loading" | { username: string } | null>(
+    "loading",
   );
-  const [friends, setFriends] = useState<Friend[]>(() =>
-    (readStoredState()?.friends ?? []).map(syncFriend),
+  const [hydrated, setHydrated] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [resetToken, setResetToken] = useState<string | null>(() =>
+    typeof window === "undefined"
+      ? null
+      : new URLSearchParams(window.location.search).get("reset"),
   );
-  const [expenses, setExpenses] = useState<Expense[]>(
-    () => readStoredState()?.expenses ?? [],
-  );
-  const [auth, setAuth] = useState<Auth | null>(readAuth);
-  const [loggedIn, setLoggedIn] = useState<boolean>(isSessionActive);
+  const username = session && session !== "loading" ? session.username : null;
+  const userName = username ?? "";
   const [theme, setTheme] = useState<ThemeMode>(readStoredTheme);
   applyTheme(theme);
   const toggleTheme = () => {
@@ -85,29 +89,77 @@ export default function App() {
     storeTheme(next);
     setTheme(next);
   };
-  const [userName, setUserName] = useState<string>(
-    () => readStoredState()?.userName ?? "",
-  );
-  const [salary, setSalary] = useState<number>(
-    () => readStoredState()?.salary ?? 0,
-  );
-  const [fixedExpenses, setFixedExpenses] = useState<FixedExpense[]>(
-    () => readStoredState()?.fixedExpenses ?? [],
-  );
+  const [salary, setSalary] = useState<number>(0);
+  const [fixedExpenses, setFixedExpenses] = useState<FixedExpense[]>([]);
 
+  const applyData = (d: Record<string, unknown>) => {
+    setCards((d.cards as Card[]) ?? []);
+    setFriends(((d.friends as Friend[]) ?? []).map(syncFriend));
+    setExpenses((d.expenses as Expense[]) ?? []);
+    setSalary((d.salary as number) ?? 0);
+    setFixedExpenses((d.fixedExpenses as FixedExpense[]) ?? []);
+  };
+
+  // 1) ao abrir, vê se já existe uma sessão ativa
   useEffect(() => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        cards,
-        friends,
-        expenses,
-        salary,
-        fixedExpenses,
-        userName,
-      }),
-    );
-  }, [cards, friends, expenses, salary, fixedExpenses, userName]);
+    api.me().then((r) => setSession(r.ok ? { username: r.data.username as string } : null));
+  }, []);
+
+  // 2) depois do login, carrega os dados da conta (banco da Vercel)
+  useEffect(() => {
+    if (!username) return;
+    let cancelled = false;
+    (async () => {
+      const r = await api.getState();
+      if (cancelled) return;
+      if (!r.ok) {
+        setLoadError(true);
+        return;
+      }
+      setLoadError(false);
+      if (r.data.data) {
+        applyData(r.data.data);
+      } else {
+        // conta nova: oferece importar dados antigos salvos só neste aparelho
+        const legacy = readStoredState();
+        if (
+          legacy &&
+          window.confirm("Encontramos dados salvos neste aparelho. Importar para a sua conta?")
+        ) {
+          applyData(legacy);
+        } else {
+          applyData({});
+        }
+      }
+      window.localStorage.removeItem(STORAGE_KEY);
+      setHydrated(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [username]);
+
+  // 3) salva no servidor (aguarda 0,8s sem mudanças)
+  useEffect(() => {
+    if (!hydrated) return;
+    const timer = setTimeout(() => {
+      api.saveState({ cards, friends, expenses, salary, fixedExpenses });
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [hydrated, cards, friends, expenses, salary, fixedExpenses]);
+
+  const logout = async () => {
+    await api.logout();
+    setHydrated(false);
+    setSession(null);
+    setCards([]);
+    setFriends([]);
+    setExpenses([]);
+    setSalary(0);
+    setFixedExpenses([]);
+    setScreen("home");
+    setTabScreen("home");
+  };
 
   const navigate = (s: Screen, data?: unknown) => {
     setScreen(s);
@@ -299,40 +351,55 @@ export default function App() {
     cards.map((c) => [c.id, cardUsed(c.id, expenses, friends, fixedExpenses)]),
   );
 
-  if (!auth) {
+  const centered = {
+    background: S.bg,
+    minHeight: "100vh",
+    display: "flex",
+    flexDirection: "column" as const,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    color: S.muted,
+    fontFamily: "'Outfit', sans-serif",
+    padding: 24,
+    textAlign: "center" as const,
+  };
+
+  if (session === "loading") {
+    return <div key={`${theme}-loading`} style={centered}>Carregando…</div>;
+  }
+
+  if (!session) {
     return (
       <AuthScreen
-        key={`${theme}-register`}
-        mode="register"
-        initialName={userName}
-        onSubmit={async (name, password) => {
-          const created = await createAuth(name, password);
-          setAuth(created);
-          setUserName(created.name);
-          setSession(true);
-          setLoggedIn(true);
-          return null;
+        key={`${theme}-auth`}
+        resetToken={resetToken}
+        onAuthenticated={(name) => setSession({ username: name })}
+        onResetDone={() => {
+          setResetToken(null);
+          window.history.replaceState(null, "", window.location.pathname);
         }}
       />
     );
   }
 
-  if (!loggedIn) {
+  if (!hydrated) {
     return (
-      <AuthScreen
-        key={`${theme}-login`}
-        mode="login"
-        initialName={auth.name}
-        onSubmit={async (name, password) => {
-          if (!(await verifyAuth(auth, name, password))) {
-            return "Nome ou senha incorretos.";
-          }
-          setUserName(auth.name);
-          setSession(true);
-          setLoggedIn(true);
-          return null;
-        }}
-      />
+      <div key={`${theme}-sync`} style={centered}>
+        {loadError ? (
+          <>
+            <p>Não foi possível carregar seus dados.</p>
+            <button
+              onClick={() => window.location.reload()}
+              style={{ background: S.purple, color: "#fff", border: "none", borderRadius: 10, padding: "10px 18px", fontWeight: 700, cursor: "pointer" }}
+            >
+              Tentar de novo
+            </button>
+          </>
+        ) : (
+          "Carregando seus dados…"
+        )}
+      </div>
     );
   }
 
@@ -391,10 +458,7 @@ export default function App() {
               fixedExpenses={fixedExpenses}
               salary={salary}
               userName={userName}
-              onLogout={() => {
-                setSession(false);
-                setLoggedIn(false);
-              }}
+              onLogout={logout}
               onRemoveExpense={removeExpense}
               onTogglePaid={toggleExpensePaid}
             />
@@ -466,10 +530,7 @@ export default function App() {
               onToggleFixedExpense={toggleFixedExpense}
               onAddFixedExpense={addFixedExpense}
               onClearAll={clearAllData}
-              onLogout={() => {
-                setSession(false);
-                setLoggedIn(false);
-              }}
+              onLogout={logout}
             />
           )}
           {screen === "addCard" && (

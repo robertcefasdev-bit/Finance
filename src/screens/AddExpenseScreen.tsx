@@ -38,6 +38,9 @@ export default function AddExpenseScreen({
 }: Props) {
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("");
+  const [customCategory, setCustomCategory] = useState("");
+  const finalCategory =
+    category === "Outros" ? customCategory.trim() || "Outros" : category;
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [cardId, setCardId] = useState("");
   const [splitEnabled, setSplitEnabled] = useState(false);
@@ -80,8 +83,8 @@ export default function AddExpenseScreen({
 
     const newExpense: Expense = {
       id: `expense-${Date.now()}`,
-      title: title.trim() || category,
-      category,
+      title: title.trim() || finalCategory,
+      category: finalCategory,
       categoryIcon:
         CATEGORIES.find((item) => item.label === category)?.icon ?? "📦",
       cardId,
@@ -96,8 +99,8 @@ export default function AddExpenseScreen({
       selectedFriends.forEach((friendId) => {
         const debt: Debt = {
           id: `debt-${Date.now()}-${friendId}`,
-          title: title.trim() || category,
-          category,
+          title: title.trim() || finalCategory,
+          category: finalCategory,
           cardId,
           amount: shareAmount,
           current: 1,
@@ -311,6 +314,25 @@ export default function AddExpenseScreen({
               );
             })}
           </div>
+          {category === "Outros" && (
+            <input
+              value={customCategory}
+              onChange={(e) => setCustomCategory(e.target.value)}
+              placeholder="Nome da categoria (ex.: Pet, Presente...)"
+              maxLength={30}
+              style={{
+                marginTop: 10,
+                width: "100%",
+                background: S.surface,
+                border: `1px solid ${S.border}`,
+                borderRadius: 12,
+                padding: "11px 14px",
+                color: S.text,
+                fontSize: 14,
+                outline: "none",
+              }}
+            />
+          )}
         </div>
 
         {/* Date */}
