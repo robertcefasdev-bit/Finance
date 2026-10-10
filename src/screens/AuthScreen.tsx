@@ -1,5 +1,5 @@
 import { useState } from "react";
-import shockLogo from "../assets/shock-logo.png";
+import { shockLogo } from "../assets/shockLogo";
 import { S } from "../theme";
 import { api } from "../utils/api";
 
