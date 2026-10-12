@@ -2,6 +2,7 @@ import { useState } from "react";
 import { fmt } from "../data/mockData";
 import type { Card, Expense, FixedExpense, Friend, Screen } from "../data/mockData";
 import { S } from "../theme";
+import LogoutButton from "../components/LogoutButton";
 
 
 const CARD_COLOR: Record<string, string> = {
@@ -11,6 +12,8 @@ const CARD_COLOR: Record<string, string> = {
 };
 
 interface Props {
+  pixKey: string;
+  onChangePix: (pix: string) => void;
   cardUsage: Record<string, number>;
   navigate: (s: Screen, data?: unknown) => void;
   cards: Card[];
@@ -30,6 +33,8 @@ interface Props {
 }
 
 export default function SettingsScreen({
+  pixKey,
+  onChangePix,
   cardUsage,
   navigate,
   cards,
@@ -150,22 +155,25 @@ export default function SettingsScreen({
       }}
     >
       {/* Header */}
-      <div style={{ padding: "52px 20px 0" }}>
-        <p
-          style={{
-            color: S.muted,
-            fontSize: 12,
-            letterSpacing: "0.15em",
-            textTransform: "uppercase",
-            fontFamily: "'JetBrains Mono', monospace",
-            marginBottom: 4,
-          }}
-        >
-          Gerenciamento
-        </p>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: S.text }}>
-          Configurações
-        </h1>
+      <div style={{ padding: "52px 20px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <p
+            style={{
+              color: S.muted,
+              fontSize: 12,
+              letterSpacing: "0.15em",
+              textTransform: "uppercase",
+              fontFamily: "'JetBrains Mono', monospace",
+              marginBottom: 4,
+            }}
+          >
+            Gerenciamento
+          </p>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: S.text }}>
+            Configurações
+          </h1>
+        </div>
+        <LogoutButton onLogout={onLogout} />
       </div>
 
       {/* Salary */}
@@ -263,24 +271,20 @@ export default function SettingsScreen({
         </div>
       </div>
 
-      {/* Sair */}
+      {/* Chave Pix */}
       <div style={{ margin: "20px 20px 0" }}>
-        <button
-          onClick={onLogout}
-          style={{
-            width: "100%",
-            padding: "12px",
-            borderRadius: 14,
-            border: `1px solid ${S.border}`,
-            background: S.surface,
-            color: S.text,
-            fontSize: 14,
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          🔒 Sair da conta
-        </button>
+        <p style={{ color: S.muted, fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "'JetBrains Mono', monospace", marginBottom: 8 }}>
+          Minha chave Pix
+        </p>
+        <input
+          value={pixKey}
+          onChange={(e) => onChangePix(e.target.value)}
+          placeholder="🔑 CPF, e-mail, telefone ou chave aleatória"
+          style={{ width: "100%", background: S.surface, border: `1px solid ${S.border}`, borderRadius: 14, padding: "13px 14px", color: S.text, fontSize: 14, outline: "none" }}
+        />
+        <p style={{ color: S.muted, fontSize: 11, marginTop: 6 }}>
+          Vai junto no extrato enviado aos devedores.
+        </p>
       </div>
 
       {/* Credit Cards */}

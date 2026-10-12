@@ -4,6 +4,7 @@ import { buildStatement, paidCount, planAdvance } from "../utils/finance";
 import type { Card, Friend, Debt, Screen } from "../data/mockData";
 import { getCurrentMonthOwed } from "../utils/finance";
 import { S } from "../theme";
+import StatementList, { type StatementRow } from "../components/Statement";
 
 
 const CARD_COLOR: Record<string, string> = {
@@ -36,7 +37,7 @@ interface Props {
   onMarkDebtPaid: (friendId: string, debtId: string, all?: boolean) => void;
   onDeleteDebt: (friendId: string, debtId: string) => void;
   onReactivateDebt: (friendId: string, debtId: string) => void;
-  onUpdatePix: (friendId: string, pix: string) => void;
+  pixKey: string;
   onUpdateFriend: (friendId: string, name: string, phone: string) => void;
   onRegisterAdvance: (friendId: string, amount: number) => void;
   onUndoAdvance: (friendId: string, advanceId: string) => void;
@@ -52,7 +53,7 @@ export default function DebtorProfileScreen({
   onMarkDebtPaid,
   onDeleteDebt,
   onReactivateDebt,
-  onUpdatePix,
+  pixKey,
   onUpdateFriend,
   onRegisterAdvance,
   onUndoAdvance,
@@ -100,7 +101,6 @@ export default function DebtorProfileScreen({
     onUpdateFriend(friend.id, editName.trim(), editPhone.trim());
     setEditingInfo(false);
   };
-  const [pix, setPix] = useState(friend.pix ?? "");
   const byCard = [...cards, CASH_CARD]
     .map((card) => ({
       card,
@@ -145,6 +145,8 @@ export default function DebtorProfileScreen({
       amount: installmentValue,
       current: 1,
       total: installmentsCount,
+      date: new Date().toISOString().split("T")[0],
+      startMonth: new Date().toISOString().slice(0, 7),
       paid: false,
     };
     onAddDebt(friend.id, nd);
@@ -159,6 +161,84 @@ export default function DebtorProfileScreen({
     setToast(msg);
     setTimeout(() => setToast(""), 2500);
   };
+
+  const pad2 = (n: number) => String(n).padStart(2, "0");
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const cardLabel = (id: string) =>
+    id === "cash" ? "Dinheiro" : (cards.find((c) => c.id === id)?.bank ?? CARD_NAME[id] ?? "Cartão");
+
+  const debtRow = (debt: Debt): StatementRow => {
+    const done = paidCount(debt);
+    let date = debt.date ?? todayIso;
+    if (!debt.date && debt.startMonth) {
+      const [y, m] = debt.startMonth.split("-");
+      date = `${y}-${m.padStart(2, "0")}-01`;
+    }
+    return {
+      id: debt.id,
+      date,
+      icon: debt.cardId === "cash" ? "💵" : "💳",
+      iconColor: CARD_COLOR[debt.cardId] ?? S.purple,
+      title: debt.title,
+      subtitle: `${cardLabel(debt.cardId)} · ${debt.total > 1 ? `${done}/${debt.total} pagas` : "à vista"}`,
+      amount: debt.amount,
+      kind: "out",
+      dim: debt.paid,
+      meta: debt.paid ? "✓ Pago" : debt.total > 1 ? "por parcela" : "pendente",
+      onClick: () => setActionDebtId(debt.id),
+    };
+  };
+
+  const advanceRows: StatementRow[] = advances.map((a, index) => {
+    const when = new Date(a.date);
+    const isLatest = index === advances.length - 1;
+    return {
+      id: a.id,
+      date: `${when.getFullYear()}-${pad2(when.getMonth() + 1)}-${pad2(when.getDate())}`,
+      time: `${pad2(when.getHours())}h${pad2(when.getMinutes())}`,
+      icon: "💰",
+      iconColor: S.green,
+      title: "Adiantamento",
+      subtitle:
+        (a.applied.length > 0
+          ? `Quitou: ${a.applied.map((x) => x.title).join(", ")}`
+          : "Virou saldo a favor") + (a.creditAfter > 0 ? ` · sobrou ${fmt(a.creditAfter)}` : ""),
+      amount: a.amount,
+      kind: "in",
+      meta: isLatest ? (
+        <>
+          <span>{`${pad2(when.getHours())}h${pad2(when.getMinutes())}`}</span>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (window.confirm("Desfazer o último adiantamento?")) {
+                onUndoAdvance(friend.id, a.id);
+                showToast("Adiantamento desfeito ↺");
+              }
+            }}
+            style={{ border: `1px solid ${S.border}`, background: "none", color: S.muted, borderRadius: 8, padding: "2px 8px", fontSize: 11, cursor: "pointer" }}
+          >
+            Desfazer
+          </button>
+        </>
+      ) : undefined,
+    };
+  });
+
+  const statementRows: StatementRow[] = [
+    ...debts.filter((d) => !d.paid).map(debtRow),
+    ...visiblePaid.map(debtRow),
+    ...advanceRows,
+  ];
+
+  const actionBtn = (extra: object) => ({
+    padding: "13px 8px",
+    borderRadius: 14,
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: "pointer",
+    ...extra,
+  });
 
   return (
     <div
@@ -307,391 +387,80 @@ export default function DebtorProfileScreen({
         </div>
       </div>
 
-      {/* Debt by card */}
-      <div style={{ padding: "20px 20px 0" }}>
-        <p
-          style={{
-            color: S.muted,
-            fontSize: 11,
-            letterSpacing: "0.12em",
-            textTransform: "uppercase",
-            fontFamily: "'JetBrains Mono', monospace",
-            marginBottom: 14,
-          }}
-        >
-          Por Cartão
-        </p>
-        {byCard.length === 0 ? (
-          <div
-            style={{
-              textAlign: "center",
-              color: S.muted,
-              fontSize: 13,
-              padding: "20px 0",
-            }}
-          >
-            Sem dívidas em aberto 🎉
-          </div>
-        ) : (
-          byCard.map(({ card, debts: cd }) => (
-            <div key={card.id} style={{ marginBottom: 16 }}>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  marginBottom: 8,
-                }}
-              >
-                <div
-                  style={{
-                    width: 28,
-                    height: 18,
-                    borderRadius: 4,
-                    background: `linear-gradient(135deg, ${card.color}60, ${card.color}30)`,
-                    border: `1px solid ${card.color}40`,
-                  }}
-                />
-                <p style={{ color: card.color, fontSize: 12, fontWeight: 700 }}>
-                  {card.bank}
-                </p>
-                <p style={{ color: S.muted, fontSize: 11 }}>
-                  · {fmt(cd.reduce((s, d) => s + d.amount, 0))}/mês
-                </p>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {cd.map((debt) => (
-                  <div
-                    key={debt.id}
-                    style={{
-                      background: S.surface,
-                      border: `1px solid ${S.border}`,
-                      borderRadius: 14,
-                      padding: "12px 14px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                    }}
-                  >
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p
-                        style={{
-                          color: S.text,
-                          fontSize: 13,
-                          fontWeight: 600,
-                          marginBottom: 3,
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                      >
-                        {debt.title}
-                      </p>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 6,
-                        }}
-                      >
-                        <span style={{ color: S.muted, fontSize: 10 }}>
-                          {debt.category}
-                        </span>
-                      </div>
-                      <div
-                        style={{
-                          marginTop: 6,
-                          background: S.border,
-                          borderRadius: 3,
-                          height: 3,
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: `${(paidCount(debt) / debt.total) * 100}%`,
-                            height: "100%",
-                            borderRadius: 3,
-                            background: `linear-gradient(90deg, ${CARD_COLOR[debt.cardId] ?? S.purple}, ${CARD_COLOR[debt.cardId] ?? S.purple}90)`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "flex-end",
-                        gap: 5,
-                        flexShrink: 0,
-                      }}
-                    >
-                      <span
-                        style={{
-                          padding: "2px 8px",
-                          borderRadius: 6,
-                          background: `${CARD_COLOR[debt.cardId] ?? S.purple}20`,
-                          border: `1px solid ${CARD_COLOR[debt.cardId] ?? S.purple}40`,
-                          color: CARD_COLOR[debt.cardId] ?? S.purple,
-                          fontSize: 10,
-                          fontWeight: 700,
-                          fontFamily: "'JetBrains Mono', monospace",
-                        }}
-                      >
-                        {paidCount(debt)}/{debt.total} pagas
-                      </span>
-                      <p
-                        style={{ color: S.text, fontSize: 13, fontWeight: 700 }}
-                      >
-                        {fmt(debt.amount)}
-                      </p>
-                      <button
-                        onClick={() => handleMarkPaid(debt.id)}
-                        style={{
-                          background: `${S.green}15`,
-                          border: `1px solid ${S.green}40`,
-                          borderRadius: 8,
-                          padding: "3px 8px",
-                          color: S.green,
-                          fontSize: 10,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {debt.total > 1 ? "✓ Pagar parcela" : "✓ Pago"}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* Paid debts */}
-      {visiblePaid.length > 0 && (
-        <div style={{ padding: "0 20px 0" }}>
-          <p
-            style={{
-              color: S.muted,
-              fontSize: 11,
-              letterSpacing: "0.12em",
-              textTransform: "uppercase",
-              fontFamily: "'JetBrains Mono', monospace",
-              marginBottom: 10,
-            }}
-          >
-            Pagos
+      {/* Saldo a favor */}
+      {(friend.credit ?? 0) > 0 && (
+        <div style={{ margin: "16px 20px 0", background: `${S.green}12`, border: `1px solid ${S.green}40`, borderRadius: 16, padding: "14px 16px" }}>
+          <p style={{ color: S.green, fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+            💰 Saldo a favor
           </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {visiblePaid.map((debt) => (
-                <div
-                  key={debt.id}
-                  style={{
-                    background: S.surface,
-                    border: `1px solid ${S.border}`,
-                    borderRadius: 14,
-                    padding: "12px 14px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    opacity: 0.5,
-                  }}
-                >
-                  <div>
-                    <p
-                      style={{
-                        color: S.text,
-                        fontSize: 13,
-                        fontWeight: 600,
-                        textDecoration: "line-through",
-                      }}
-                    >
-                      {debt.title}
-                    </p>
-                    <p style={{ color: S.muted, fontSize: 10, marginTop: 2 }}>
-                      {debt.cardId === "cash" ? "Dinheiro" : (CARD_NAME[debt.cardId] ?? cards.find((c) => c.id === debt.cardId)?.bank)}
-                    </p>
-                  </div>
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 8 }}
-                  >
-                    <p
-                      style={{
-                        color: S.muted,
-                        fontSize: 13,
-                        fontWeight: 700,
-                        textDecoration: "line-through",
-                      }}
-                    >
-                      {fmt(debt.amount)}
-                    </p>
-                    <span style={{ color: S.green, fontSize: 12 }}>✓</span>
-                    <button
-                      onClick={() => handleUndo(debt.id)}
-                      style={{
-                        border: `1px solid ${S.purple}60`,
-                        background: `${S.purple}20`,
-                        color: S.purple,
-                        borderRadius: 8,
-                        padding: "4px 8px",
-                        fontSize: 10,
-                        fontWeight: 700,
-                        cursor: "pointer",
-                      }}
-                    >
-                      ↺ Reativar
-                    </button>
-                  </div>
-                </div>
-              ))}
-          </div>
+          <p style={{ color: S.text, fontSize: 26, fontWeight: 700, margin: "2px 0" }}>
+            {fmt(friend.credit ?? 0)}
+          </p>
+          <p style={{ color: S.muted, fontSize: 12 }}>
+            Sobrou de adiantamentos. Será somado ao próximo adiantamento.
+          </p>
         </div>
       )}
 
-      {/* Action buttons */}
-      <div
-        style={{
-          padding: "20px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-        }}
-      >
+      {/* Ações */}
+      <div style={{ padding: "16px 20px 0", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <button
           onClick={() => setShowAddModal(true)}
-          style={{
-            width: "100%",
-            padding: "14px",
-            borderRadius: 14,
-            border: "none",
-            background: `linear-gradient(135deg, ${S.purpleDim}, ${S.purple})`,
-            color: "#fff",
-            fontSize: 14,
-            fontWeight: 700,
-            cursor: "pointer",
-            boxShadow: `0 0 18px ${S.purple}40`,
-          }}
+          style={actionBtn({ border: "none", background: `linear-gradient(135deg, ${S.purpleDim}, ${S.purple})`, color: "#fff" })}
         >
-          + Adicionar Nova Dívida
+          + Nova dívida
         </button>
         <button
           onClick={() => {
             setAdvanceValue("");
             setShowAdvance(true);
           }}
-          style={{
-            width: "100%",
-            padding: "14px",
-            borderRadius: 14,
-            border: `1px solid ${S.green}40`,
-            background: `${S.green}15`,
-            color: S.green,
-            fontSize: 14,
-            fontWeight: 700,
-            cursor: "pointer",
-          }}
+          style={actionBtn({ border: `1px solid ${S.green}40`, background: `${S.green}15`, color: S.green })}
         >
-          💰 Registrar adiantamento
+          💰 Adiantamento
         </button>
-        {advances.length > 0 && (
-          <div style={{ background: S.surface, border: `1px solid ${S.border}`, borderRadius: 14, padding: 12 }}>
-            <p style={{ color: S.muted, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>
-              Adiantamentos
-            </p>
-            {[...advances].reverse().slice(0, 5).map((a, i) => (
-              <div key={a.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "6px 0", borderTop: i ? `1px solid ${S.border}` : "none" }}>
-                <div>
-                  <p style={{ color: S.text, fontSize: 13, fontWeight: 600 }}>
-                    {new Date(a.date).toLocaleDateString("pt-BR")} · {fmt(a.amount)}
-                  </p>
-                  <p style={{ color: S.muted, fontSize: 11 }}>
-                    {a.applied.length > 0
-                      ? `Quitou: ${a.applied.map((x) => x.title).join(", ")}`
-                      : "Nenhuma parcela quitada"}
-                    {a.creditAfter > 0 ? ` · sobrou ${fmt(a.creditAfter)}` : ""}
-                  </p>
-                </div>
-                {i === 0 && (
-                  <button
-                    onClick={() => {
-                      if (window.confirm("Desfazer o último adiantamento?")) {
-                        onUndoAdvance(friend.id, a.id);
-                        showToast("Adiantamento desfeito ↺");
-                      }
-                    }}
-                    style={{ border: `1px solid ${S.border}`, background: "none", color: S.muted, borderRadius: 8, padding: "4px 8px", fontSize: 11, cursor: "pointer" }}
-                  >
-                    Desfazer
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-        <input
-          value={pix}
-          onChange={(e) => setPix(e.target.value)}
-          onBlur={() => onUpdatePix(friend.id, pix.trim())}
-          placeholder="🔑 Minha chave Pix (salva para as cobranças)"
-          style={{
-            width: "100%",
-            padding: "12px 14px",
-            borderRadius: 12,
-            border: `1px solid ${S.border}`,
-            background: S.surface,
-            color: S.text,
-            fontSize: 13,
-            outline: "none",
-          }}
-        />
         <button
           onClick={async () => {
-            onUpdatePix(friend.id, pix.trim());
             try {
-              await navigator.clipboard.writeText(buildStatement(friend, pix.trim()));
+              await navigator.clipboard.writeText(buildStatement(friend, pixKey.trim()));
               showToast("Extrato copiado ✓");
             } catch {
               showToast("Não foi possível copiar");
             }
           }}
-          style={{
-            width: "100%",
-            padding: "12px",
-            borderRadius: 14,
-            border: `1px solid ${S.border}`,
-            background: S.surface,
-            color: S.text,
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
+          style={actionBtn({ border: `1px solid ${S.border}`, background: S.surface, color: S.text })}
         >
           📋 Copiar extrato
         </button>
         <button
           onClick={() => {
-            onUpdatePix(friend.id, pix.trim());
-            const msg = encodeURIComponent(buildStatement(friend, pix.trim()));
-            window.open(
-              `https://wa.me/${friend.phone?.replace(/\D/g, "")}?text=${msg}`,
-              "_blank",
-            );
+            const msg = encodeURIComponent(buildStatement(friend, pixKey.trim()));
+            window.open(`https://wa.me/${friend.phone?.replace(/\D/g, "")}?text=${msg}`, "_blank");
           }}
-          style={{
-            width: "100%",
-            padding: "14px",
-            borderRadius: 14,
-            border: `1px solid #25d36640`,
-            background: "#25d36610",
-            color: "#25d366",
-            fontSize: 14,
-            fontWeight: 700,
-            cursor: "pointer",
-          }}
+          style={actionBtn({ border: "1px solid #25d36640", background: "#25d36610", color: "#25d366" })}
         >
-          📱 Lembrar via WhatsApp
+          📱 WhatsApp
         </button>
+      </div>
+      {!pixKey.trim() && (
+        <p style={{ padding: "10px 20px 0", color: S.muted, fontSize: 12 }}>
+          🔑 Sua chave Pix não está cadastrada.{" "}
+          <button
+            onClick={() => navigate("settings")}
+            style={{ background: "none", border: "none", color: S.purple, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0 }}
+          >
+            Cadastrar em Configurações
+          </button>
+        </p>
+      )}
+
+      {/* Extrato */}
+      <div style={{ padding: "24px 20px 0" }}>
+        <p style={{ color: S.muted, fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "'JetBrains Mono', monospace", marginBottom: 4 }}>
+          Extrato de {friend.name}
+        </p>
+        <p style={{ color: S.muted, fontSize: 11, marginBottom: 12 }}>Toque numa dívida para pagar, quitar ou excluir.</p>
+        <StatementList rows={statementRows} emptyText="Nenhuma dívida registrada." />
       </div>
 
       {/* Add Debt Modal */}

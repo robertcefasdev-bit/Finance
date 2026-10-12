@@ -59,6 +59,7 @@ export interface Debt {
   paidMonth?: string;
   startMonth?: string; // "AAAA-MM" da 1ª parcela
   paidInstallments?: number; // parcelas já pagas (padrão: current - 1)
+  date?: string; // "AAAA-MM-DD" da compra
 }
 
 export interface Expense {

@@ -20,6 +20,7 @@ import type {
   Friend,
 } from "../data/mockData";
 import { S } from "../theme";
+import StatementList, { type StatementRow } from "../components/Statement";
 
 
 const CARD_COLOR: Record<string, string> = {
@@ -532,128 +533,67 @@ export default function HomeScreen({
             + Nova
           </button>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {visibleExpenses.map((exp) => {
+        <StatementList
+          undatedLabel="Despesas fixas"
+          emptyText="Nenhuma despesa ainda."
+          rows={visibleExpenses.map((exp): StatementRow => {
             const card = cards.find((c) => c.id === exp.cardId);
             const isFixed = exp.kind === "fixed";
-            return (
-              <div
-                key={exp.id}
-                style={{
-                  background: S.surface,
-                  border: `1px solid ${S.border}`,
-                  borderRadius: 16,
-                  padding: "12px 14px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                }}
-              >
-                <div
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 12,
-                    background: `${CARD_COLOR[exp.cardId] ?? S.purple}20`,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 18,
-                  }}
-                >
-                  {exp.categoryIcon}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <p
+            const where = isFixed
+              ? "Despesa fixa · todo mês"
+              : exp.cardId === "cash"
+                ? "💵 Dinheiro"
+                : (card?.bank ?? "Cartão");
+            return {
+              id: exp.id,
+              date: isFixed ? "" : exp.date,
+              icon: exp.categoryIcon,
+              iconColor: CARD_COLOR[exp.cardId] ?? S.purple,
+              title: exp.title,
+              subtitle: isFixed ? where : `${where} · ${exp.category}`,
+              amount: isFixed ? exp.amount : monthlyAmount(exp as Expense),
+              kind: "out",
+              dim: Boolean(exp.paid),
+              meta: isFixed ? undefined : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => onTogglePaid(exp.id)}
                     style={{
-                      color: S.text,
-                      fontSize: 13,
+                      padding: "2px 8px",
+                      borderRadius: 6,
+                      border: `1px solid ${exp.paid ? "#22c55e40" : "#f59e0b40"}`,
+                      background: exp.paid ? "#22c55e20" : "#f59e0b20",
+                      color: exp.paid ? S.green : "#f59e0b",
+                      fontSize: 10,
                       fontWeight: 600,
-                      marginBottom: 3,
+                      cursor: "pointer",
                     }}
                   >
-                    {exp.title}
-                  </p>
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 6 }}
+                    {exp.paid ? "Paga" : "Pendente"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onRemoveExpense(exp.id)}
+                    aria-label={`Remover ${exp.title}`}
+                    style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: "50%",
+                      border: "1px solid #ef444440",
+                      background: "#ef444415",
+                      color: "#ef4444",
+                      fontSize: 12,
+                      cursor: "pointer",
+                    }}
                   >
-                    <span
-                      style={{
-                        padding: "2px 8px",
-                        borderRadius: 6,
-                        background: `${CARD_COLOR[exp.cardId] ?? S.purple}20`,
-                        border: `1px solid ${CARD_COLOR[exp.cardId] ?? S.purple}40`,
-                        color: CARD_COLOR[exp.cardId] ?? S.purple,
-                        fontSize: 10,
-                        fontWeight: 600,
-                        fontFamily: "'JetBrains Mono', monospace",
-                      }}
-                    >
-                      {isFixed
-                        ? "Fixa"
-                        : exp.cardId === "cash"
-                          ? "💵 Dinheiro"
-                          : (card?.bank ?? "Cartão")}
-                    </span>
-                    <span style={{ color: S.muted, fontSize: 10 }}>
-                      {exp.category}
-                    </span>
-                  </div>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <p style={{ fontSize: 14, fontWeight: 700, color: S.text }}>
-                    {fmt("kind" in exp && exp.kind === "fixed" ? exp.amount : monthlyAmount(exp as Expense))}
-                  </p>
-                  {!isFixed && (
-                    <button
-                      type="button"
-                      onClick={() => onTogglePaid(exp.id)}
-                      style={{
-                        padding: "3px 8px",
-                        borderRadius: 6,
-                        border: `1px solid ${exp.paid ? "#22c55e40" : "#f59e0b40"}`,
-                        background: exp.paid ? "#22c55e20" : "#f59e0b20",
-                        color: exp.paid ? S.green : "#f59e0b",
-                        fontSize: 9,
-                        fontWeight: 600,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {exp.paid ? "Paga" : "Pendente"}
-                    </button>
-                  )}
-                  {!isFixed && (
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        onRemoveExpense(exp.id);
-                      }}
-                      style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: "50%",
-                        border: `1px solid #ef444440`,
-                        background: "#ef444415",
-                        color: "#ef4444",
-                        fontSize: 12,
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0,
-                      }}
-                      aria-label={`Remover ${exp.title}`}
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
+                    ×
+                  </button>
+                </>
+              ),
+            };
           })}
-        </div>
+        />
       </div>
 
       {/* Borrowers */}

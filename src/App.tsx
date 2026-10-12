@@ -90,6 +90,7 @@ export default function App() {
     setTheme(next);
   };
   const [salary, setSalary] = useState<number>(0);
+  const [pixKey, setPixKey] = useState("");
   const [fixedExpenses, setFixedExpenses] = useState<FixedExpense[]>([]);
 
   const applyData = (d: Record<string, unknown>) => {
@@ -97,6 +98,11 @@ export default function App() {
     setFriends(((d.friends as Friend[]) ?? []).map(syncFriend));
     setExpenses((d.expenses as Expense[]) ?? []);
     setSalary((d.salary as number) ?? 0);
+    setPixKey(
+      (d.pixKey as string) ??
+        ((d.friends as Friend[]) ?? []).find((f) => f.pix)?.pix ??
+        "",
+    );
     setFixedExpenses((d.fixedExpenses as FixedExpense[]) ?? []);
   };
 
@@ -143,10 +149,10 @@ export default function App() {
   useEffect(() => {
     if (!hydrated) return;
     const timer = setTimeout(() => {
-      api.saveState({ cards, friends, expenses, salary, fixedExpenses });
+      api.saveState({ cards, friends, expenses, salary, fixedExpenses, pixKey });
     }, 800);
     return () => clearTimeout(timer);
-  }, [hydrated, cards, friends, expenses, salary, fixedExpenses]);
+  }, [hydrated, cards, friends, expenses, salary, fixedExpenses, pixKey]);
 
   const logout = async () => {
     await api.logout();
@@ -156,6 +162,7 @@ export default function App() {
     setFriends([]);
     setExpenses([]);
     setSalary(0);
+    setPixKey("");
     setFixedExpenses([]);
     setScreen("home");
     setTabScreen("home");
@@ -401,12 +408,6 @@ export default function App() {
     );
   };
 
-  const updateFriendPix = (friendId: string, pix: string) => {
-    setFriends((prev) =>
-      prev.map((friend) => (friend.id === friendId ? { ...friend, pix } : friend)),
-    );
-  };
-
   const removeFixedExpense = (expenseId: string) => {
     setFixedExpenses((prev) => prev.filter((item) => item.id !== expenseId));
   };
@@ -574,7 +575,7 @@ export default function App() {
               cards={cards}
               onAddDebt={addDebtToFriend}
               onReactivateDebt={reactivateDebt}
-              onUpdatePix={updateFriendPix}
+              pixKey={pixKey}
               onUpdateFriend={updateFriendInfo}
               onRegisterAdvance={registerAdvance}
               onUndoAdvance={undoAdvance}
@@ -590,6 +591,8 @@ export default function App() {
           )}
           {screen === "settings" && (
             <SettingsScreen
+              pixKey={pixKey}
+              onChangePix={setPixKey}
               cardUsage={cardUsage}
               navigate={navigate}
               cards={cards}
