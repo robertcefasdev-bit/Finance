@@ -24,7 +24,7 @@ import {
   INITIAL_FIXED_EXPENSES,
   INITIAL_SALARY,
 } from "./data/mockData";
-import { syncFriend } from "./utils/finance";
+import { syncFriend, paidCount, planAdvance } from "./utils/finance";
 import { S, applyTheme, readStoredTheme, storeTheme, type ThemeMode } from "./theme";
 import { HomeIcon, CalendarIcon, PeopleIcon, GearIcon } from "./components/NavIcons";
 
@@ -251,17 +251,21 @@ export default function App() {
     );
   };
 
-  const markDebtPaid = (friendId: string, debtId: string) => {
+  // Paga a próxima parcela (ou quita tudo, se all = true)
+  const markDebtPaid = (friendId: string, debtId: string, all = false) => {
+    const month = new Date().toISOString().slice(0, 7);
     setFriends((prev) =>
       prev.map((friend) => {
         if (friend.id !== friendId) return friend;
         return syncFriend({
           ...friend,
-          debts: friend.debts.map((debt) =>
-            debt.id === debtId
-              ? { ...debt, paid: true, paidMonth: new Date().toISOString().slice(0, 7) }
-              : debt,
-          ),
+          debts: friend.debts.map((debt) => {
+            if (debt.id !== debtId || debt.paid) return debt;
+            const next = all ? debt.total : paidCount(debt) + 1;
+            return next >= debt.total
+              ? { ...debt, paid: true, paidInstallments: debt.total, paidMonth: month }
+              : { ...debt, paidInstallments: next };
+          }),
         });
       }),
     );
@@ -297,6 +301,7 @@ export default function App() {
     );
   };
 
+  // Desfaz o último pagamento (a última parcela paga volta a ficar em aberto)
   const reactivateDebt = (friendId: string, debtId: string) => {
     setFriends((prev) =>
       prev.map((friend) =>
@@ -304,11 +309,17 @@ export default function App() {
           ? friend
           : syncFriend({
               ...friend,
-              debts: friend.debts.map((debt) =>
-                debt.id === debtId
-                  ? { ...debt, paid: false, paidMonth: undefined }
-                  : debt,
-              ),
+              debts: friend.debts.map((debt) => {
+                if (debt.id !== debtId) return debt;
+                const base = debt.paid ? debt.total : paidCount(debt);
+                const floor = Math.max(debt.current - 1, 0);
+                return {
+                  ...debt,
+                  paid: false,
+                  paidMonth: undefined,
+                  paidInstallments: Math.max(base - 1, floor),
+                };
+              }),
             }),
       ),
     );
@@ -325,6 +336,68 @@ export default function App() {
       prev.map((friend) =>
         friend.id === friendId ? { ...friend, name, phone, initials } : friend,
       ),
+    );
+  };
+
+  // Registra um adiantamento: quita as parcelas que cabem e guarda a sobra como saldo
+  const registerAdvance = (friendId: string, amount: number) => {
+    const month = new Date().toISOString().slice(0, 7);
+    setFriends((prev) =>
+      prev.map((friend) => {
+        if (friend.id !== friendId) return friend;
+        const plan = planAdvance(friend, amount);
+        const debts = friend.debts.map((debt) => {
+          const item = plan.applied.find((x) => x.debtId === debt.id);
+          if (!item) return debt;
+          const next = paidCount(debt) + item.installments.length;
+          return next >= debt.total
+            ? { ...debt, paid: true, paidInstallments: debt.total, paidMonth: month }
+            : { ...debt, paidInstallments: next };
+        });
+        const record = {
+          id: `adv-${Date.now()}`,
+          date: new Date().toISOString(),
+          amount,
+          creditBefore: plan.creditBefore,
+          creditAfter: plan.creditAfter,
+          applied: plan.applied,
+        };
+        return syncFriend({
+          ...friend,
+          debts,
+          credit: plan.creditAfter,
+          advances: [...(friend.advances ?? []), record],
+        });
+      }),
+    );
+  };
+
+  // Desfaz o adiantamento mais recente
+  const undoAdvance = (friendId: string, advanceId: string) => {
+    setFriends((prev) =>
+      prev.map((friend) => {
+        if (friend.id !== friendId) return friend;
+        const advances = friend.advances ?? [];
+        const last = advances[advances.length - 1];
+        if (!last || last.id !== advanceId) return friend;
+        const debts = friend.debts.map((debt) => {
+          const item = last.applied.find((x) => x.debtId === debt.id);
+          if (!item) return debt;
+          const base = debt.paid ? debt.total : paidCount(debt);
+          return {
+            ...debt,
+            paid: false,
+            paidMonth: undefined,
+            paidInstallments: Math.max(base - item.installments.length, Math.max(debt.current - 1, 0)),
+          };
+        });
+        return syncFriend({
+          ...friend,
+          debts,
+          credit: last.creditBefore,
+          advances: advances.slice(0, -1),
+        });
+      }),
     );
   };
 
@@ -503,6 +576,8 @@ export default function App() {
               onReactivateDebt={reactivateDebt}
               onUpdatePix={updateFriendPix}
               onUpdateFriend={updateFriendInfo}
+              onRegisterAdvance={registerAdvance}
+              onUndoAdvance={undoAdvance}
               onMarkDebtPaid={markDebtPaid}
               onDeleteDebt={deleteDebt}
               initialOpenAddDebt={Boolean(

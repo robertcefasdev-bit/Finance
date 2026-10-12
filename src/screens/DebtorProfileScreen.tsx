@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { fmt } from "../data/mockData";
+import { buildStatement, paidCount, planAdvance } from "../utils/finance";
 import type { Card, Friend, Debt, Screen } from "../data/mockData";
 import { getCurrentMonthOwed } from "../utils/finance";
 import { S } from "../theme";
@@ -32,11 +33,13 @@ interface Props {
   friend: Friend;
   cards: Card[];
   onAddDebt: (friendId: string, debt: Debt) => void;
-  onMarkDebtPaid: (friendId: string, debtId: string) => void;
+  onMarkDebtPaid: (friendId: string, debtId: string, all?: boolean) => void;
   onDeleteDebt: (friendId: string, debtId: string) => void;
   onReactivateDebt: (friendId: string, debtId: string) => void;
   onUpdatePix: (friendId: string, pix: string) => void;
   onUpdateFriend: (friendId: string, name: string, phone: string) => void;
+  onRegisterAdvance: (friendId: string, amount: number) => void;
+  onUndoAdvance: (friendId: string, advanceId: string) => void;
   initialOpenAddDebt?: boolean;
 }
 
@@ -51,6 +54,8 @@ export default function DebtorProfileScreen({
   onReactivateDebt,
   onUpdatePix,
   onUpdateFriend,
+  onRegisterAdvance,
+  onUndoAdvance,
   initialOpenAddDebt = false,
 }: Props) {
   const [debts, setDebts] = useState<Debt[]>(friend.debts);
@@ -82,6 +87,11 @@ export default function DebtorProfileScreen({
   const installmentsCount = parseInt(newInstall, 10) || 1;
   const installmentValue = parsedTotalAmount / installmentsCount;
 
+  const [showAdvance, setShowAdvance] = useState(false);
+  const [advanceValue, setAdvanceValue] = useState("");
+  const advanceAmount = parseFloat(advanceValue.replace(",", ".")) || 0;
+  const advancePlan = planAdvance(friend, advanceAmount);
+  const advances = friend.advances ?? [];
   const [editingInfo, setEditingInfo] = useState(false);
   const [editName, setEditName] = useState(friend.name);
   const [editPhone, setEditPhone] = useState(friend.phone ?? "");
@@ -100,18 +110,17 @@ export default function DebtorProfileScreen({
 
   const handleMarkPaid = (id: string) => {
     onMarkDebtPaid(friend.id, id);
-    setDebts((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, paid: true } : d)),
-    );
-    showToast("Marcado como pago ✓");
+    showToast("Parcela paga ✓");
+  };
+
+  const handlePayAll = (id: string) => {
+    onMarkDebtPaid(friend.id, id, true);
+    showToast("Dívida quitada ✓");
   };
 
   const handleUndo = (id: string) => {
     onReactivateDebt(friend.id, id);
-    setDebts((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, paid: false } : d)),
-    );
-    showToast("Pagamento cancelado ↺");
+    showToast("Último pagamento desfeito ↺");
   };
 
   const handleDelete = (id: string) => {
@@ -290,6 +299,11 @@ export default function DebtorProfileScreen({
           <p style={{ color: S.muted, fontSize: 12, marginTop: 4 }}>
             {debts.filter((d) => !d.paid).length} dívida(s) ativa(s)
           </p>
+          {(friend.credit ?? 0) > 0 && (
+            <p style={{ color: S.green, fontSize: 13, fontWeight: 700, marginTop: 8 }}>
+              💰 Saldo a favor: {fmt(friend.credit ?? 0)}
+            </p>
+          )}
         </div>
       </div>
 
@@ -394,7 +408,7 @@ export default function DebtorProfileScreen({
                       >
                         <div
                           style={{
-                            width: `${(debt.current / debt.total) * 100}%`,
+                            width: `${(paidCount(debt) / debt.total) * 100}%`,
                             height: "100%",
                             borderRadius: 3,
                             background: `linear-gradient(90deg, ${CARD_COLOR[debt.cardId] ?? S.purple}, ${CARD_COLOR[debt.cardId] ?? S.purple}90)`,
@@ -423,7 +437,7 @@ export default function DebtorProfileScreen({
                           fontFamily: "'JetBrains Mono', monospace",
                         }}
                       >
-                        {debt.current}/{debt.total}
+                        {paidCount(debt)}/{debt.total} pagas
                       </span>
                       <p
                         style={{ color: S.text, fontSize: 13, fontWeight: 700 }}
@@ -443,7 +457,7 @@ export default function DebtorProfileScreen({
                           cursor: "pointer",
                         }}
                       >
-                        ✓ Pago
+                        {debt.total > 1 ? "✓ Pagar parcela" : "✓ Pago"}
                       </button>
                     </div>
                   </div>
@@ -561,6 +575,60 @@ export default function DebtorProfileScreen({
         >
           + Adicionar Nova Dívida
         </button>
+        <button
+          onClick={() => {
+            setAdvanceValue("");
+            setShowAdvance(true);
+          }}
+          style={{
+            width: "100%",
+            padding: "14px",
+            borderRadius: 14,
+            border: `1px solid ${S.green}40`,
+            background: `${S.green}15`,
+            color: S.green,
+            fontSize: 14,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          💰 Registrar adiantamento
+        </button>
+        {advances.length > 0 && (
+          <div style={{ background: S.surface, border: `1px solid ${S.border}`, borderRadius: 14, padding: 12 }}>
+            <p style={{ color: S.muted, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>
+              Adiantamentos
+            </p>
+            {[...advances].reverse().slice(0, 5).map((a, i) => (
+              <div key={a.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "6px 0", borderTop: i ? `1px solid ${S.border}` : "none" }}>
+                <div>
+                  <p style={{ color: S.text, fontSize: 13, fontWeight: 600 }}>
+                    {new Date(a.date).toLocaleDateString("pt-BR")} · {fmt(a.amount)}
+                  </p>
+                  <p style={{ color: S.muted, fontSize: 11 }}>
+                    {a.applied.length > 0
+                      ? `Quitou: ${a.applied.map((x) => x.title).join(", ")}`
+                      : "Nenhuma parcela quitada"}
+                    {a.creditAfter > 0 ? ` · sobrou ${fmt(a.creditAfter)}` : ""}
+                  </p>
+                </div>
+                {i === 0 && (
+                  <button
+                    onClick={() => {
+                      if (window.confirm("Desfazer o último adiantamento?")) {
+                        onUndoAdvance(friend.id, a.id);
+                        showToast("Adiantamento desfeito ↺");
+                      }
+                    }}
+                    style={{ border: `1px solid ${S.border}`, background: "none", color: S.muted, borderRadius: 8, padding: "4px 8px", fontSize: 11, cursor: "pointer" }}
+                  >
+                    Desfazer
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
         <input
           value={pix}
           onChange={(e) => setPix(e.target.value)}
@@ -578,13 +646,33 @@ export default function DebtorProfileScreen({
           }}
         />
         <button
+          onClick={async () => {
+            onUpdatePix(friend.id, pix.trim());
+            try {
+              await navigator.clipboard.writeText(buildStatement(friend, pix.trim()));
+              showToast("Extrato copiado ✓");
+            } catch {
+              showToast("Não foi possível copiar");
+            }
+          }}
+          style={{
+            width: "100%",
+            padding: "12px",
+            borderRadius: 14,
+            border: `1px solid ${S.border}`,
+            background: S.surface,
+            color: S.text,
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+        >
+          📋 Copiar extrato
+        </button>
+        <button
           onClick={() => {
             onUpdatePix(friend.id, pix.trim());
-            const msg = encodeURIComponent(
-              `Oi ${friend.name}! Você tem ${fmt(totalOwed)} em aberto comigo.` +
-                (pix.trim() ? `\nMinha chave Pix: ${pix.trim()}` : "") +
-                ` Pode verificar?`,
-            );
+            const msg = encodeURIComponent(buildStatement(friend, pix.trim()));
             window.open(
               `https://wa.me/${friend.phone?.replace(/\D/g, "")}?text=${msg}`,
               "_blank",
@@ -913,7 +1001,23 @@ export default function DebtorProfileScreen({
                   fontWeight: 700,
                 }}
               >
-                ✓ Marcar como paga
+                ✓ {(debts.find((x) => x.id === actionDebtId)?.total ?? 1) > 1 ? "Pagar próxima parcela" : "Marcar como paga"}
+              </button>
+              <button
+                onClick={() => {
+                  handlePayAll(actionDebtId);
+                  setActionDebtId(null);
+                }}
+                style={{
+                  padding: "10px",
+                  borderRadius: 12,
+                  background: `${S.green}15`,
+                  border: `1px solid ${S.green}40`,
+                  color: S.green,
+                  fontWeight: 700,
+                }}
+              >
+                ✓✓ Quitar dívida inteira
               </button>
               <button
                 onClick={() => {
@@ -929,7 +1033,7 @@ export default function DebtorProfileScreen({
                   fontWeight: 700,
                 }}
               >
-                ↺ Cancelar pagamento
+                ↺ Desfazer último pagamento
               </button>
               <button
                 onClick={() => {
@@ -946,6 +1050,93 @@ export default function DebtorProfileScreen({
                 }}
               >
                 🗑 Excluir dívida
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Adiantamento */}
+      {showAdvance && (
+        <div
+          onClick={() => setShowAdvance(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 100 }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: "100%", maxWidth: 430, background: S.surface, borderRadius: "20px 20px 0 0", padding: 20, maxHeight: "85vh", overflowY: "auto" }}
+          >
+            <p style={{ color: S.text, fontSize: 16, fontWeight: 700, marginBottom: 4 }}>
+              Adiantamento de {friend.name}
+            </p>
+            <p style={{ color: S.muted, fontSize: 12, marginBottom: 12 }}>
+              Quita as parcelas em aberto, da mais antiga para a mais nova, até onde o valor alcançar.
+            </p>
+            <input
+              autoFocus
+              inputMode="decimal"
+              value={advanceValue}
+              onChange={(e) => setAdvanceValue(e.target.value)}
+              placeholder="Valor recebido, ex.: 467"
+              style={{ width: "100%", background: S.surface2, border: `1px solid ${S.border}`, borderRadius: 12, padding: "13px 14px", color: S.text, fontSize: 16, outline: "none" }}
+            />
+            {(friend.credit ?? 0) > 0 && (
+              <p style={{ color: S.green, fontSize: 12, marginTop: 8 }}>
+                💰 Saldo a favor de {fmt(friend.credit ?? 0)} será somado a este valor.
+              </p>
+            )}
+            {advanceAmount > 0 && (
+              <div style={{ marginTop: 14, background: S.bg, border: `1px solid ${S.border}`, borderRadius: 12, padding: 12 }}>
+                {advancePlan.applied.length === 0 ? (
+                  <p style={{ color: S.muted, fontSize: 13 }}>
+                    {advancePlan.hasOpen
+                      ? "O valor não cobre nenhuma parcela inteira. Tudo vira saldo a favor."
+                      : "Não há parcelas em aberto. Tudo vira saldo a favor."}
+                  </p>
+                ) : (
+                  <>
+                    <p style={{ color: S.muted, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>
+                      Será marcado como pago
+                    </p>
+                    {advancePlan.applied.map((item) => {
+                      const debt = friend.debts.find((x) => x.id === item.debtId);
+                      return (
+                        <div key={item.debtId} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "4px 0" }}>
+                          <span style={{ color: S.text, fontSize: 13 }}>
+                            {item.title}
+                            {debt && debt.total > 1 ? ` · parcela ${item.installments.join(", ")}/${debt.total}` : ""}
+                          </span>
+                          <span style={{ color: S.green, fontSize: 13, fontWeight: 700 }}>{fmt(item.amount)}</span>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+                <div style={{ borderTop: `1px solid ${S.border}`, marginTop: 8, paddingTop: 8, display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: S.muted, fontSize: 12 }}>Sobra (saldo a favor)</span>
+                  <span style={{ color: advancePlan.creditAfter > 0 ? S.green : S.muted, fontSize: 13, fontWeight: 700 }}>
+                    {fmt(advancePlan.creditAfter)}
+                  </span>
+                </div>
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+              <button
+                disabled={advanceAmount <= 0}
+                onClick={() => {
+                  onRegisterAdvance(friend.id, advanceAmount);
+                  setShowAdvance(false);
+                  showToast("Adiantamento registrado ✓");
+                }}
+                style={{ flex: 1, padding: 13, borderRadius: 12, border: "none", background: advanceAmount > 0 ? S.green : S.border, color: advanceAmount > 0 ? "#fff" : S.muted, fontWeight: 700, fontSize: 14, cursor: advanceAmount > 0 ? "pointer" : "default" }}
+              >
+                Confirmar
+              </button>
+              <button
+                onClick={() => setShowAdvance(false)}
+                style={{ padding: "13px 18px", borderRadius: 12, border: `1px solid ${S.border}`, background: "none", color: S.muted, fontSize: 14, cursor: "pointer" }}
+              >
+                Cancelar
               </button>
             </div>
           </div>

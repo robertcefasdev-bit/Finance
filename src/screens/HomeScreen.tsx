@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   LineChart,
   Line,
@@ -11,7 +11,7 @@ import {
   Cell,
 } from "recharts";
 import { fmt } from "../data/mockData";
-import { monthlyAmount } from "../utils/finance";
+import { commitColor, commitLabel, monthlyAmount } from "../utils/finance";
 import type {
   Screen,
   Card,
@@ -39,6 +39,104 @@ interface Props {
   onLogout: () => void;
   onRemoveExpense: (expenseId: string) => void;
   onTogglePaid: (expenseId: string) => void;
+}
+
+// Barra do salário comprometido: enche com animação e a cor muda aos poucos
+// (verde → amarelo → laranja → vermelho) conforme o percentual sobe.
+function CommitBar({ pct }: { pct: number }) {
+  const [shown, setShown] = useState(0);
+  const shownRef = useRef(0);
+
+  useEffect(() => {
+    let raf = 0;
+    const from = shownRef.current;
+    const start = performance.now();
+    const duration = 1000;
+    const tick = (now: number) => {
+      const t = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - t, 3);
+      const value = from + (pct - from) * eased;
+      shownRef.current = value;
+      setShown(value);
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [pct]);
+
+  const color = commitColor(shown);
+  const critical = pct >= 80;
+
+  return (
+    <>
+      <style>{`
+        @keyframes commitShimmer { from { transform: translateX(-120%); } to { transform: translateX(380%); } }
+        @keyframes commitPulse { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.4); } }
+      `}</style>
+      <div
+        style={{
+          position: "relative",
+          background: S.border,
+          borderRadius: 8,
+          height: 10,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            position: "relative",
+            overflow: "hidden",
+            width: `${Math.min(shown, 100)}%`,
+            height: "100%",
+            borderRadius: 8,
+            background: color,
+            boxShadow: `0 0 12px ${color}`,
+            animation: critical ? "commitPulse 1.1s ease-in-out infinite" : undefined,
+          }}
+        >
+          <span
+            style={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              width: "35%",
+              background:
+                "linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent)",
+              animation: "commitShimmer 2.2s linear infinite",
+            }}
+          />
+        </div>
+        {[40, 60, 80].map((mark) => (
+          <span
+            key={mark}
+            style={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              left: `${mark}%`,
+              width: 2,
+              background: S.bg,
+              opacity: 0.6,
+            }}
+          />
+        ))}
+      </div>
+      <p
+        style={{
+          marginTop: 6,
+          fontSize: 11,
+          fontFamily: "'JetBrains Mono', monospace",
+          display: "flex",
+          justifyContent: "space-between",
+        }}
+      >
+        <span style={{ color: S.muted }}>{Math.round(pct)}% do salário comprometido</span>
+        <span style={{ color, fontWeight: 700, transition: "color 0.3s" }}>
+          {commitLabel(pct)}
+        </span>
+      </p>
+    </>
+  );
 }
 
 export default function HomeScreen({
@@ -227,29 +325,7 @@ export default function HomeScreen({
             </p>
           </div>
         </div>
-        <div style={{ background: S.border, borderRadius: 6, height: 6 }}>
-          <div
-            style={{
-              width: `${Math.min((totalExpenses / Math.max(salary, 1)) * 100, 100)}%`,
-              height: "100%",
-              borderRadius: 6,
-              background: `linear-gradient(90deg, ${S.purpleDim}, ${S.purple})`,
-              boxShadow: `0 0 10px ${S.purple}60`,
-              transition: "width 0.4s",
-            }}
-          />
-        </div>
-        <p
-          style={{
-            color: S.muted,
-            fontSize: 11,
-            marginTop: 6,
-            fontFamily: "'JetBrains Mono', monospace",
-          }}
-        >
-          {Math.round((totalExpenses / Math.max(salary, 1)) * 100)}% do salário
-          comprometido
-        </p>
+        <CommitBar pct={salary > 0 ? (totalExpenses / salary) * 100 : 0} />
       </div>
 
       {/* Chart toggle */}

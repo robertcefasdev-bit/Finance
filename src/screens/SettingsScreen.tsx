@@ -53,6 +53,7 @@ export default function SettingsScreen({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editCard, setEditCard] = useState("");
+  const [editError, setEditError] = useState("");
   const [editAmount, setEditAmount] = useState("");
   const [showBankInput, setShowBankInput] = useState(false);
   const [customBank, setCustomBank] = useState("");
@@ -65,11 +66,25 @@ export default function SettingsScreen({
     setEditName(fe.name);
     setEditAmount(String(fe.amount));
     setEditCard(fe.cardId ?? "");
+    setEditError("");
   };
 
   const saveEdit = (fe: FixedExpense) => {
     const amount = parseFloat(editAmount.replace(",", "."));
     if (!editName.trim() || !amount) return;
+    const target = cards.find((c) => c.id === editCard);
+    if (target && fe.active) {
+      // o valor antigo desta despesa já está contado no cartão, então volta para o disponível
+      const alreadyThere = fe.active && fe.cardId === target.id ? fe.amount : 0;
+      const available = target.limit - (cardUsage[target.id] ?? 0) + alreadyThere;
+      if (amount > available) {
+        setEditError(
+          `Passa do limite do cartão ${target.name}. Disponível: ${fmt(Math.max(available, 0))}`,
+        );
+        return;
+      }
+    }
+    setEditError("");
     onUpdateFixedExpense({
       ...fe,
       name: editName.trim(),
@@ -537,6 +552,9 @@ export default function SettingsScreen({
                       <option key={c.id} value={c.id}>{c.name} · {c.bank}</option>
                     ))}
                   </select>
+                  {editError && (
+                    <p style={{ flexBasis: "100%", color: "#ef4444", fontSize: 12 }}>⚠️ {editError}</p>
+                  )}
                   <button onClick={() => saveEdit(fe)} style={{ border: "none", borderRadius: 8, padding: "7px 12px", background: `${S.purple}30`, color: S.purple, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Salvar</button>
                   <button onClick={() => setEditingId(null)} style={{ border: "none", borderRadius: 8, padding: "7px 10px", background: S.surface2, color: S.muted, fontSize: 12, cursor: "pointer" }}>Cancelar</button>
                 </div>

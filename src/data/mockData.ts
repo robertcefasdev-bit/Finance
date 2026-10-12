@@ -17,6 +17,22 @@ export interface Card {
   color: string;
 }
 
+export interface AdvanceItem {
+  debtId: string;
+  title: string;
+  installments: number[]; // números das parcelas quitadas
+  amount: number;
+}
+
+export interface Advance {
+  id: string;
+  date: string; // ISO
+  amount: number;
+  creditBefore: number;
+  creditAfter: number;
+  applied: AdvanceItem[];
+}
+
 export interface Friend {
   id: string;
   name: string;
@@ -27,6 +43,8 @@ export interface Friend {
   totalOwed: number;
   status: "pending" | "paid";
   debts: Debt[];
+  credit?: number; // saldo a favor (adiantamentos que sobraram)
+  advances?: Advance[];
 }
 
 export interface Debt {
@@ -40,6 +58,7 @@ export interface Debt {
   paid: boolean;
   paidMonth?: string;
   startMonth?: string; // "AAAA-MM" da 1ª parcela
+  paidInstallments?: number; // parcelas já pagas (padrão: current - 1)
 }
 
 export interface Expense {

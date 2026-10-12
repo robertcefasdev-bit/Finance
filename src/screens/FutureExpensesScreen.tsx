@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { fmt } from "../data/mockData";
-import { installmentNumber, monthlyAmount } from "../utils/finance";
+import { monthlyAmount, projectedInstallment } from "../utils/finance";
 import type { Card, Expense, FixedExpense, Friend } from "../data/mockData";
 import { S } from "../theme";
 
@@ -80,19 +80,22 @@ export default function FutureExpensesScreen({
           totalFixed;
         const balance = salary - expensesForMonth;
         const activeInstallments = friends.flatMap((friend) =>
-          friend.debts
-            .filter(
-              (debt) => !debt.paid && installmentNumber(debt, date) !== null,
-            )
-            .map((debt) => ({
-              ...debt,
-              current: installmentNumber(debt, date) as number,
-              personName: friend.name,
-              personInitials: friend.initials,
-              personColor: friend.color,
-              isOwner: false,
-              displayCurrent: installmentNumber(debt, date) as number,
-            })),
+          friend.debts.flatMap((debt) => {
+            const item = projectedInstallment(debt, date, monthNumber === 1);
+            if (!item) return [];
+            return [
+              {
+                ...debt,
+                current: item.current,
+                amount: item.amount,
+                personName: friend.name,
+                personInitials: friend.initials,
+                personColor: friend.color,
+                isOwner: false,
+                displayCurrent: item.current,
+              },
+            ];
+          }),
         );
         const receivable = activeInstallments.reduce(
           (sum, item) => sum + item.amount,

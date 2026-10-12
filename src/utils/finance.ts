@@ -1,4 +1,6 @@
 import type {
+  Advance,
+  AdvanceItem,
   Card,
   Debt,
   Expense,
@@ -28,7 +30,7 @@ export function cardUsed(
   const debtors = friends
     .flatMap((f) => f.debts)
     .filter((d) => d.cardId === cardId && !d.paid)
-    .reduce((sum, d) => sum + d.amount * Math.max(d.total - d.current + 1, 1), 0);
+    .reduce((sum, d) => sum + d.amount * Math.max(d.total - paidCount(d), 0), 0);
   const fixed = fixedExpenses
     .filter((fe) => fe.active && fe.cardId === cardId)
     .reduce((sum, fe) => sum + fe.amount, 0);
@@ -48,11 +50,81 @@ export function installmentNumber(debt: Debt, ref: Date): number | null {
   return n >= debt.current && n <= debt.total ? n : null;
 }
 
+// Quantas parcelas da dívida já foram pagas
+export function paidCount(debt: Debt) {
+  return debt.paidInstallments ?? debt.current - 1;
+}
+
+// Parcela "bruta" do mês de ref, sem limitar ao início/fim da dívida
+function rawInstallment(debt: Debt, ref: Date) {
+  const now = new Date();
+  const [y, m] = (debt.startMonth ?? `${now.getFullYear()}-${now.getMonth() + 1}`)
+    .split("-")
+    .map(Number);
+  return debt.current + (ref.getFullYear() - y) * 12 + (ref.getMonth() + 1 - m);
+}
+
+// Parcelas já vencidas até o mês de ref e ainda não pagas
+export function dueInstallments(debt: Debt, ref: Date) {
+  if (debt.paid) return 0;
+  return Math.max(0, Math.min(rawInstallment(debt, ref), debt.total) - paidCount(debt));
+}
+
+// O que aparece na Projeção naquele mês (null = nada a receber)
+export function projectedInstallment(
+  debt: Debt,
+  ref: Date,
+  isFirstMonth: boolean,
+): { current: number; amount: number } | null {
+  if (debt.paid) return null;
+  const paid = paidCount(debt);
+  if (isFirstMonth) {
+    // no mês atual entram também as parcelas atrasadas
+    const due = dueInstallments(debt, ref);
+    if (due <= 0) return null;
+    return {
+      current: Math.min(rawInstallment(debt, ref), debt.total),
+      amount: Math.round(debt.amount * due * 100) / 100,
+    };
+  }
+  const n = installmentNumber(debt, ref);
+  return n !== null && n > paid ? { current: n, amount: debt.amount } : null;
+}
+
 export function getCurrentMonthOwed(debts: Debt[]) {
   const now = new Date();
-  return debts
-    .filter((debt) => !debt.paid && installmentNumber(debt, now) !== null)
-    .reduce((sum, debt) => sum + debt.amount, 0);
+  const total = debts.reduce(
+    (sum, debt) => sum + debt.amount * dueInstallments(debt, now),
+    0,
+  );
+  return Math.round(total * 100) / 100;
+}
+
+// Cor gradual do salário comprometido: verde → amarelo → laranja → vermelho
+export function commitColor(pct: number) {
+  const stops: [number, [number, number, number]][] = [
+    [30, [34, 197, 94]],
+    [50, [234, 179, 8]],
+    [70, [249, 115, 22]],
+    [90, [239, 68, 68]],
+  ];
+  if (pct <= stops[0][0]) return `rgb(${stops[0][1].join(",")})`;
+  for (let i = 1; i < stops.length; i++) {
+    const [p1, c1] = stops[i];
+    const [p0, c0] = stops[i - 1];
+    if (pct <= p1) {
+      const t = (pct - p0) / (p1 - p0);
+      return `rgb(${c0.map((v, k) => Math.round(v + (c1[k] - v) * t)).join(",")})`;
+    }
+  }
+  return `rgb(${stops[stops.length - 1][1].join(",")})`;
+}
+
+export function commitLabel(pct: number) {
+  if (pct < 40) return "Tranquilo";
+  if (pct < 60) return "Atenção";
+  if (pct < 80) return "Alto";
+  return "Crítico";
 }
 
 export function syncFriend(friend: Friend): Friend {
@@ -135,3 +207,121 @@ export function buildProjectionData({
     installments,
   };
 }
+
+// ---------- Adiantamento e extrato ----------
+const cents = (n: number) => Math.round(n * 100);
+const MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+const brl = (n: number) =>
+  n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+// Índice absoluto do mês em que vence a parcela k da dívida
+function monthIndexOf(debt: Debt, k: number) {
+  const now = new Date();
+  const [y, m] = (debt.startMonth ?? `${now.getFullYear()}-${now.getMonth() + 1}`)
+    .split("-")
+    .map(Number);
+  return y * 12 + (m - 1) + (k - debt.current);
+}
+
+export function installmentMonthLabel(debt: Debt, k: number) {
+  const idx = monthIndexOf(debt, k);
+  return `${MONTHS[((idx % 12) + 12) % 12]}/${Math.floor(idx / 12)}`;
+}
+
+// Parcelas já vencidas (até o mês de ref) e ainda não pagas
+export function openInstallments(debt: Debt, ref: Date): number[] {
+  if (debt.paid) return [];
+  const last = Math.min(rawInstallment(debt, ref), debt.total);
+  const list: number[] = [];
+  for (let k = paidCount(debt) + 1; k <= last; k++) list.push(k);
+  return list;
+}
+
+// Distribui o valor (mais o saldo a favor) pelas parcelas em aberto,
+// da mais antiga para a mais nova. Parcela que não cabe é pulada (e as
+// seguintes da mesma dívida esperam, porque são pagas em ordem).
+export function planAdvance(friend: Friend, amount: number, ref: Date = new Date()) {
+  const creditBefore = friend.credit ?? 0;
+  let pool = amount > 0 ? cents(amount) + cents(creditBefore) : cents(creditBefore);
+  const queue: { debt: Debt; k: number; order: number }[] = [];
+  friend.debts.forEach((debt, i) => {
+    for (const k of openInstallments(debt, ref)) {
+      queue.push({ debt, k, order: monthIndexOf(debt, k) * 1000 + i });
+    }
+  });
+  queue.sort((a, b) => a.order - b.order);
+
+  const blocked = new Set<string>();
+  const applied = new Map<string, AdvanceItem>();
+  let usedCents = 0;
+  if (amount > 0) {
+    for (const { debt, k } of queue) {
+      if (blocked.has(debt.id)) continue;
+      const c = cents(debt.amount);
+      if (c > pool) {
+        blocked.add(debt.id);
+        continue;
+      }
+      pool -= c;
+      usedCents += c;
+      const item = applied.get(debt.id) ?? {
+        debtId: debt.id,
+        title: debt.title,
+        installments: [],
+        amount: 0,
+      };
+      item.installments.push(k);
+      item.amount = (cents(item.amount) + c) / 100;
+      applied.set(debt.id, item);
+    }
+  }
+  return {
+    applied: [...applied.values()],
+    used: usedCents / 100,
+    creditBefore,
+    creditAfter: amount > 0 ? pool / 100 : creditBefore,
+    hasOpen: queue.length > 0,
+  };
+}
+
+const dm = (iso: string) =>
+  new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+
+// Texto do extrato (para WhatsApp ou copiar)
+export function buildStatement(friend: Friend, pix: string, ref: Date = new Date()) {
+  const lines: string[] = [`Oi ${friend.name}! Segue o extrato das suas dívidas 📋`, ""];
+  const open: string[] = [];
+  for (const debt of friend.debts) {
+    for (const k of openInstallments(debt, ref)) {
+      const part = debt.total > 1 ? ` — parcela ${k}/${debt.total}` : "";
+      open.push(`• ${debt.title}${part} (${installmentMonthLabel(debt, k)}): ${brl(debt.amount)}`);
+    }
+  }
+  if (open.length === 0) {
+    lines.push("Nenhuma dívida em aberto neste mês ✅");
+  } else {
+    lines.push("Em aberto:", ...open);
+  }
+  lines.push("", `Total em aberto: ${brl(getCurrentMonthOwed(friend.debts))}`);
+
+  const ym = `${ref.getFullYear()}-${String(ref.getMonth() + 1).padStart(2, "0")}`;
+  const advances = (friend.advances ?? []).filter((a) => a.date.slice(0, 7) === ym);
+  if (advances.length > 0) {
+    lines.push("", "Adiantamentos recebidos neste mês 💰");
+    for (const a of advances) {
+      const paid = a.applied
+        .map((i) => {
+          const debt = friend.debts.find((d) => d.id === i.debtId);
+          const parts = debt && debt.total > 1 ? ` (${i.installments.join(", ")}/${debt.total})` : "";
+          return `${i.title}${parts}`;
+        })
+        .join("; ");
+      lines.push(`• ${dm(a.date)}: ${brl(a.amount)}${paid ? ` → quitou: ${paid}` : ""}`);
+    }
+  }
+  if ((friend.credit ?? 0) > 0) lines.push("", `Saldo a favor: ${brl(friend.credit ?? 0)}`);
+  if (pix) lines.push("", `Minha chave Pix: ${pix}`);
+  return lines.join("\n");
+}
+
+export type { Advance };
