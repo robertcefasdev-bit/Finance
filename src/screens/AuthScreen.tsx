@@ -7,6 +7,7 @@ type Mode = "login" | "register" | "forgot" | "reset";
 
 interface Props {
   resetToken?: string | null;
+  notice?: string;
   onAuthenticated: (username: string) => void;
   onResetDone?: () => void;
 }
@@ -14,7 +15,7 @@ interface Props {
 const UNAVAILABLE =
   "Servidor não encontrado. Publique na Vercel ou rode com `vercel dev` (veja o DEPLOY.md).";
 
-export default function AuthScreen({ resetToken, onAuthenticated, onResetDone }: Props) {
+export default function AuthScreen({ resetToken, notice, onAuthenticated, onResetDone }: Props) {
   const [mode, setMode] = useState<Mode>(resetToken ? "reset" : "login");
   const [username, setUsername] = useState("");
   const [phone, setPhone] = useState("");
@@ -206,6 +207,9 @@ export default function AuthScreen({ resetToken, onAuthenticated, onResetDone }:
       {(mode === "register" || mode === "reset") &&
         passwordField(confirm, setConfirm, "Repita a senha", false)}
 
+      {notice && mode === "login" && !error && !info && (
+        <p style={{ color: S.orange, fontSize: 13, textAlign: "center", maxWidth: 320 }}>{notice}</p>
+      )}
       {error && (
         <p style={{ color: "#ef4444", fontSize: 13, textAlign: "center", maxWidth: 320 }}>{error}</p>
       )}

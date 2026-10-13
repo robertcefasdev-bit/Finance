@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import HomeScreen from "./screens/HomeScreen";
 import FutureExpensesScreen from "./screens/FutureExpensesScreen";
 import AddExpenseScreen from "./screens/AddExpenseScreen";
@@ -167,6 +167,40 @@ export default function App() {
     setScreen("home");
     setTabScreen("home");
   };
+
+  // Desconecta sozinho depois de 5 minutos sem uso
+  const INACTIVITY_MS = 5 * 60 * 1000;
+  const [expired, setExpired] = useState(false);
+  const lastActivity = useRef(Date.now());
+  const logoutRef = useRef(logout);
+  logoutRef.current = logout;
+
+  useEffect(() => {
+    if (!username) return;
+    lastActivity.current = Date.now();
+    const mark = () => {
+      lastActivity.current = Date.now();
+    };
+    const check = () => {
+      if (Date.now() - lastActivity.current >= INACTIVITY_MS) {
+        setExpired(true);
+        logoutRef.current();
+      }
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") check();
+    };
+    const events = ["mousemove", "mousedown", "keydown", "touchstart", "scroll", "click"];
+    // capture: true pega também a rolagem dentro das telas
+    events.forEach((e) => window.addEventListener(e, mark, { capture: true, passive: true }));
+    document.addEventListener("visibilitychange", onVisible);
+    const timer = window.setInterval(check, 5000);
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, mark, { capture: true }));
+      document.removeEventListener("visibilitychange", onVisible);
+      window.clearInterval(timer);
+    };
+  }, [username]);
 
   const navigate = (s: Screen, data?: unknown) => {
     setScreen(s);
@@ -448,7 +482,11 @@ export default function App() {
       <AuthScreen
         key={`${theme}-auth`}
         resetToken={resetToken}
-        onAuthenticated={(name) => setSession({ username: name })}
+        notice={expired ? "Você foi desconectado por ficar 5 minutos sem usar o app." : undefined}
+        onAuthenticated={(name) => {
+          setExpired(false);
+          setSession({ username: name });
+        }}
         onResetDone={() => {
           setResetToken(null);
           window.history.replaceState(null, "", window.location.pathname);

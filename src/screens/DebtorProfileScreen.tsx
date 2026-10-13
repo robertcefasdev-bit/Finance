@@ -387,21 +387,6 @@ export default function DebtorProfileScreen({
         </div>
       </div>
 
-      {/* Saldo a favor */}
-      {(friend.credit ?? 0) > 0 && (
-        <div style={{ margin: "16px 20px 0", background: `${S.green}12`, border: `1px solid ${S.green}40`, borderRadius: 16, padding: "14px 16px" }}>
-          <p style={{ color: S.green, fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" }}>
-            💰 Saldo a favor
-          </p>
-          <p style={{ color: S.text, fontSize: 26, fontWeight: 700, margin: "2px 0" }}>
-            {fmt(friend.credit ?? 0)}
-          </p>
-          <p style={{ color: S.muted, fontSize: 12 }}>
-            Sobrou de adiantamentos. Será somado ao próximo adiantamento.
-          </p>
-        </div>
-      )}
-
       {/* Ações */}
       <div style={{ padding: "16px 20px 0", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <button
