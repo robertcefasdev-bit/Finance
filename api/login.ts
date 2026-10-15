@@ -1,4 +1,4 @@
-import { db, ensureSchema, hashPassword, route, send, setSessionCookie, verifyPassword } from "./_lib.js";
+import { db, ensureSchema, hashPassword, route, send, setSessionCookie, usernameKey, verifyPassword } from "./_lib.js";
 
 const MAX_FAILS = 5;
 
@@ -10,7 +10,7 @@ export default route(["POST"], async (req, res) => {
   await ensureSchema();
   const sql = db();
   const rows = await sql`SELECT id, username, password_hash, token_version, failed_count, locked_until
-    FROM users WHERE username_lc = ${username.trim().toLowerCase()}`;
+    FROM users WHERE username_lc = ${usernameKey(username)}`;
   const user = rows[0];
   if (user?.locked_until && new Date(user.locked_until) > new Date()) {
     return send(res, 429, { error: "Muitas tentativas. Tente de novo em 15 minutos." });

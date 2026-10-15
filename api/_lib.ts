@@ -154,8 +154,17 @@ export function normalizePhone(input: unknown): string | null {
   return /^\d{12,15}$/.test(digits) ? digits : null;
 }
 
-export const validUsername = (u: unknown): u is string =>
-  typeof u === "string" && /^[A-Za-z0-9_.-]{3,30}$/.test(u);
+// Nome de usuário: aceita letras (com acento), números, espaço, _ . -
+// Espaços repetidos viram um só e as pontas são cortadas.
+export function cleanUsername(u: unknown): string | null {
+  if (typeof u !== "string") return null;
+  const name = u.trim().replace(/\s+/g, " ");
+  if (name.length < 3 || name.length > 30) return null;
+  return /^[\p{L}\p{N}][\p{L}\p{N} ._-]*$/u.test(name) ? name : null;
+}
+
+// Chave usada para comparar nomes (sem diferenciar maiúsculas e espaços extras)
+export const usernameKey = (u: string) => u.trim().replace(/\s+/g, " ").toLowerCase();
 
 export const validPassword = (p: unknown): p is string =>
   typeof p === "string" && p.length >= 6 && p.length <= 200;

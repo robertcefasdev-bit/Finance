@@ -1,4 +1,4 @@
-import { appUrl, db, ensureSchema, normalizePhone, route, send, sha256 } from "./_lib.js";
+import { appUrl, db, ensureSchema, normalizePhone, route, send, sha256, usernameKey } from "./_lib.js";
 import { sendResetLink, whatsappConfigured } from "./_whatsapp.js";
 import { randomBytes } from "node:crypto";
 
@@ -18,7 +18,7 @@ export default route(["POST"], async (req, res) => {
   const sql = db();
   const phone = normalizePhone(identifier);
   const rows = await sql`SELECT id, phone FROM users
-    WHERE username_lc = ${identifier.trim().toLowerCase()} OR phone = ${phone ?? ""} LIMIT 1`;
+    WHERE username_lc = ${usernameKey(identifier)} OR phone = ${phone ?? ""} LIMIT 1`;
   const user = rows[0];
   if (!user) return send(res, 200, GENERIC);
 
