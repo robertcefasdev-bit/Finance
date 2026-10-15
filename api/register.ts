@@ -1,6 +1,7 @@
-import { cleanUsername, db, ensureSchema, hashPassword, normalizePhone, route, send, setSessionCookie, usernameKey, validPassword } from "./_lib.js";
+import { assertConfig, cleanUsername, db, ensureSchema, hashPassword, normalizePhone, route, send, setSessionCookie, usernameKey, validPassword } from "./_lib.js";
 
 export default route(["POST"], async (req, res) => {
+  assertConfig();
   const { phone, password } = req.body ?? {};
   const username = cleanUsername(req.body?.username);
   const normalized = normalizePhone(phone);

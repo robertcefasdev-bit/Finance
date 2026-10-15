@@ -72,6 +72,7 @@ export interface Expense {
   date: string;
   paid?: boolean;
   installments?: number;
+  startMonth?: string; // "AAAA-MM" da fatura em que a compra entra
 }
 
 export interface FixedExpense {

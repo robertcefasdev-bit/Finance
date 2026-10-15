@@ -24,7 +24,7 @@ import {
   INITIAL_FIXED_EXPENSES,
   INITIAL_SALARY,
 } from "./data/mockData";
-import { syncFriend, paidCount, planAdvance } from "./utils/finance";
+import { syncFriend, paidCount, planAdvance, invoiceMonth } from "./utils/finance";
 import { S, applyTheme, readStoredTheme, storeTheme, type ThemeMode } from "./theme";
 import { HomeIcon, CalendarIcon, PeopleIcon, GearIcon } from "./components/NavIcons";
 
@@ -366,6 +366,54 @@ export default function App() {
     );
   };
 
+  // Edita uma dívida do devedor (nome, valor total, parcelas, cartão e data)
+  const updateDebt = (
+    friendId: string,
+    debtId: string,
+    v: { title: string; totalValue: number; installments: number; cardId: string; date: string },
+  ) => {
+    const month = new Date().toISOString().slice(0, 7);
+    setFriends((prev) =>
+      prev.map((friend) =>
+        friend.id !== friendId
+          ? friend
+          : syncFriend({
+              ...friend,
+              debts: friend.debts.map((debt) => {
+                if (debt.id !== debtId) return debt;
+                const done = debt.paid ? debt.total : paidCount(debt);
+                const paid = done >= v.installments;
+                return {
+                  ...debt,
+                  title: v.title,
+                  cardId: v.cardId,
+                  total: v.installments,
+                  amount: Math.round((v.totalValue / v.installments) * 100) / 100,
+                  date: v.date || debt.date,
+                  startMonth:
+                    v.date || debt.date
+                      ? invoiceMonth(v.date || (debt.date as string), cards.find((c) => c.id === v.cardId))
+                      : debt.startMonth,
+                  paid,
+                  paidInstallments: Math.min(done, v.installments),
+                  paidMonth: paid ? (debt.paidMonth ?? month) : undefined,
+                };
+              }),
+            }),
+      ),
+    );
+  };
+
+  // Edita uma despesa minha
+  const updateExpense = (
+    expenseId: string,
+    v: { title: string; amount: number; installments: number; category: string; categoryIcon: string; cardId: string; date: string; startMonth: string },
+  ) => {
+    setExpenses((prev) =>
+      prev.map((item) => (item.id === expenseId ? { ...item, ...v } : item)),
+    );
+  };
+
   const updateFriendInfo = (friendId: string, name: string, phone: string) => {
     const initials = name
       .split(" ")
@@ -571,6 +619,8 @@ export default function App() {
               salary={salary}
               userName={userName}
               onLogout={logout}
+              cardUsage={cardUsage}
+              onEditExpense={updateExpense}
               onRemoveExpense={removeExpense}
               onTogglePaid={toggleExpensePaid}
             />
@@ -615,6 +665,7 @@ export default function App() {
               onReactivateDebt={reactivateDebt}
               pixKey={pixKey}
               onUpdateFriend={updateFriendInfo}
+              onEditDebt={updateDebt}
               onRegisterAdvance={registerAdvance}
               onUndoAdvance={undoAdvance}
               onMarkDebtPaid={markDebtPaid}

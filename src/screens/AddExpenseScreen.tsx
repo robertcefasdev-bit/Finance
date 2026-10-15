@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { fmt } from "../data/mockData";
+import { invoiceMonth, invoiceNote, localToday } from "../utils/finance";
 import type { Screen, Card, Friend, Expense, Debt } from "../data/mockData";
 import { S } from "../theme";
 
 
-const CATEGORIES = [
+export const CATEGORIES = [
   { label: "Tech", icon: "💻" },
   { label: "Alimentação", icon: "🍔" },
   { label: "Saúde", icon: "🏋️" },
@@ -41,7 +42,7 @@ export default function AddExpenseScreen({
   const [customCategory, setCustomCategory] = useState("");
   const finalCategory =
     category === "Outros" ? customCategory.trim() || "Outros" : category;
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(localToday());
   const [cardId, setCardId] = useState("");
   const [splitEnabled, setSplitEnabled] = useState(false);
   const [selectedFriends, setSelectedFriends] = useState<string[]>([]);
@@ -57,6 +58,7 @@ export default function AddExpenseScreen({
     ? selectedCard.limit - (cardUsage[selectedCard.id] ?? 0)
     : Infinity;
   const overLimit = !!selectedCard && numAmount > availableLimit;
+  const invoiceYm = invoiceMonth(date, selectedCard);
   const instN = parseInt(installments, 10) || 1;
   const perLabel =
     instN > 1
@@ -90,6 +92,7 @@ export default function AddExpenseScreen({
       cardId,
       amount: Math.round(myShare * 100) / 100,
       installments: parsedInstallments,
+      startMonth: invoiceYm,
       date: date || new Date().toISOString().split("T")[0],
     };
 
@@ -105,8 +108,8 @@ export default function AddExpenseScreen({
           amount: shareAmount,
           current: 1,
           total: parsedInstallments,
-          date: date || new Date().toISOString().split("T")[0],
-          startMonth: (date || new Date().toISOString().split("T")[0]).slice(0, 7),
+          date: date || localToday(),
+          startMonth: invoiceYm,
           paid: false,
         };
         onAddDebt(friendId, debt);
@@ -726,6 +729,11 @@ export default function AddExpenseScreen({
           </div>
         </div>
 
+        {invoiceNote(date, selectedCard) && (
+          <p style={{ color: S.muted, fontSize: 12, marginBottom: 10, textAlign: "center" }}>
+            {invoiceNote(date, selectedCard)}
+          </p>
+        )}
         {overLimit && selectedCard && (
           <p style={{ color: "#ef4444", fontSize: 13, marginBottom: 12, textAlign: "center" }}>
             ⚠️ Passa do limite do cartão {selectedCard.name}. Disponível: {fmt(Math.max(availableLimit, 0))}

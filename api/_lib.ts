@@ -193,9 +193,26 @@ export function route(methods: string[], handler: Handler) {
       await handler(req, res);
     } catch (error) {
       console.error(error);
+      const message = error instanceof Error ? error.message : "";
+      // erros de configuração: explica o que falta (não revela nenhum valor)
+      if (message.includes("AUTH_SECRET")) {
+        return send(res, 500, { error: "Servidor mal configurado: falta a variável AUTH_SECRET na Vercel (mínimo 16 caracteres)." });
+      }
+      if (message.includes("DATABASE_URL")) {
+        return send(res, 500, { error: "Servidor mal configurado: falta a variável DATABASE_URL (conecte o banco Neon ao projeto)." });
+      }
+      if (error instanceof Error && error.name.toLowerCase().includes("neon")) {
+        return send(res, 500, { error: "Não foi possível acessar o banco de dados. Veja os Logs da Vercel." });
+      }
       send(res, 500, { error: "Erro interno do servidor" });
     }
   };
+}
+
+// Confere a configuração ANTES de mexer no banco (evita criar a conta e falhar depois)
+export function assertConfig() {
+  db();
+  secret();
 }
 
 export const appUrl = (req: VercelRequest) =>

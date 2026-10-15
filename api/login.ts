@@ -1,8 +1,9 @@
-import { db, ensureSchema, hashPassword, route, send, setSessionCookie, usernameKey, verifyPassword } from "./_lib.js";
+import { assertConfig, db, ensureSchema, hashPassword, route, send, setSessionCookie, usernameKey, verifyPassword } from "./_lib.js";
 
 const MAX_FAILS = 5;
 
 export default route(["POST"], async (req, res) => {
+  assertConfig();
   const { username, password } = req.body ?? {};
   if (typeof username !== "string" || typeof password !== "string") {
     return send(res, 400, { error: "Informe usuário e senha." });

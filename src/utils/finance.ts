@@ -325,3 +325,48 @@ export function buildStatement(friend: Friend, pix: string, ref: Date = new Date
 }
 
 export type { Advance };
+
+// ---------- Fatura do cartão ----------
+const pad = (n: number) => String(n).padStart(2, "0");
+
+// Data de hoje no fuso do aparelho ("AAAA-MM-DD")
+export function localToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+export const currentYM = () => localToday().slice(0, 7);
+
+// Mês da fatura em que a compra entra: depois do dia de fechamento, vai para o mês seguinte
+export function invoiceMonth(dateIso: string, card?: Card | null) {
+  const [y, m, d] = (dateIso || localToday()).split("-").map(Number);
+  let idx = y * 12 + (m - 1);
+  if (card && card.id !== "cash" && d > card.closing) idx += 1;
+  return `${Math.floor(idx / 12)}-${pad((idx % 12) + 1)}`;
+}
+
+export function ymLabel(ym: string) {
+  const [y, m] = ym.split("-").map(Number);
+  return `${MONTHS[m - 1]}/${y}`;
+}
+
+// Texto explicativo: em qual fatura a compra vai cair
+export function invoiceNote(dateIso: string, card?: Card | null) {
+  if (!card || card.id === "cash") return null;
+  const inv = invoiceMonth(dateIso, card);
+  const purchase = (dateIso || localToday()).slice(0, 7);
+  return inv === purchase
+    ? `📅 Entra na fatura de ${ymLabel(inv)} (o cartão fecha dia ${card.closing}).`
+    : `📅 O cartão fechou dia ${card.closing}: esta compra entra na fatura de ${ymLabel(inv)}.`;
+}
+
+// Mês em que a despesa começa a valer
+export const expenseStart = (e: Expense) => e.startMonth ?? e.date.slice(0, 7);
+
+// Em que parcela da despesa está o mês de ref (diff < 0 = ainda não começou)
+export function expenseMonthInfo(e: Expense, ref: Date) {
+  const [y, m] = expenseStart(e).split("-").map(Number);
+  const diff = (ref.getFullYear() - y) * 12 + (ref.getMonth() + 1 - m);
+  const total = e.installments ?? 1;
+  return { diff, total, current: Math.min(Math.max(diff + 1, 1), total) };
+}

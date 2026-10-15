@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { fmt } from "../data/mockData";
-import { monthlyAmount, projectedInstallment } from "../utils/finance";
+import { expenseMonthInfo, monthlyAmount, projectedInstallment } from "../utils/finance";
 import type { Card, Expense, FixedExpense, Friend } from "../data/mockData";
 import { S } from "../theme";
 
@@ -72,9 +72,12 @@ export default function FutureExpensesScreen({
 
     return months
       .map(({ label, monthNumber, date }) => {
-        const monthExpenses = expenses.filter(
-          (item) => !item.paid && monthNumber <= (item.installments ?? 1),
-        );
+        const monthExpenses = expenses.filter((item) => {
+          if (item.paid) return false;
+          const info = expenseMonthInfo(item, date);
+          // no mês atual entram também as que ainda estão em aberto
+          return info.diff >= 0 && (monthNumber === 1 || info.diff < info.total);
+        });
         const expensesForMonth =
           monthExpenses.reduce((sum, item) => sum + monthlyAmount(item), 0) +
           totalFixed;
@@ -107,7 +110,7 @@ export default function FutureExpensesScreen({
             title: item.title,
             category: item.cardId === "cash" ? "Dinheiro" : item.category,
             amount: monthlyAmount(item),
-            current: monthNumber,
+            current: expenseMonthInfo(item, date).current,
             total: item.installments ?? 1,
           })),
           ...activeFixed.map((item) => ({

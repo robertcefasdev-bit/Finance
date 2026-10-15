@@ -11,7 +11,7 @@ import {
   Cell,
 } from "recharts";
 import { fmt } from "../data/mockData";
-import { commitColor, commitLabel, monthlyAmount } from "../utils/finance";
+import { commitColor, commitLabel, currentYM, expenseStart, invoiceMonth, invoiceNote, monthlyAmount, ymLabel } from "../utils/finance";
 import type {
   Screen,
   Card,
@@ -21,6 +21,8 @@ import type {
 } from "../data/mockData";
 import { S } from "../theme";
 import StatementList, { type StatementRow } from "../components/Statement";
+import EditModal from "../components/EditModal";
+import { CATEGORIES } from "./AddExpenseScreen";
 
 
 const CARD_COLOR: Record<string, string> = {
@@ -37,6 +39,11 @@ interface Props {
   fixedExpenses: FixedExpense[];
   salary: number;
   userName: string;
+  cardUsage: Record<string, number>;
+  onEditExpense: (
+    expenseId: string,
+    v: { title: string; amount: number; installments: number; category: string; categoryIcon: string; cardId: string; date: string; startMonth: string },
+  ) => void;
   onLogout: () => void;
   onRemoveExpense: (expenseId: string) => void;
   onTogglePaid: (expenseId: string) => void;
@@ -148,10 +155,13 @@ export default function HomeScreen({
   fixedExpenses,
   salary,
   userName,
+  cardUsage,
+  onEditExpense,
   onLogout,
   onRemoveExpense,
   onTogglePaid,
 }: Props) {
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [chartType, setChartType] = useState<"pie" | "line">("pie");
 
   const totalOwed = friends.reduce((s, f) => s + f.totalOwed, 0);
@@ -159,7 +169,7 @@ export default function HomeScreen({
     .filter((expense) => expense.active)
     .reduce((sum, expense) => sum + expense.amount, 0);
   const baseExpenses = expenses
-    .filter((e) => !e.paid)
+    .filter((e) => !e.paid && expenseStart(e) <= currentYM())
     .reduce((s, e) => s + monthlyAmount(e), 0);
   const totalExpenses = baseExpenses + activeFixedExpenses;
   const chartData = Array.from({ length: 6 }, (_, index) => ({
@@ -550,7 +560,13 @@ export default function HomeScreen({
               icon: exp.categoryIcon,
               iconColor: CARD_COLOR[exp.cardId] ?? S.purple,
               title: exp.title,
-              subtitle: isFixed ? where : `${where} · ${exp.category}`,
+              subtitle: isFixed
+                ? where
+                : `${where} · ${exp.category}${
+                    exp.cardId !== "cash" && expenseStart(exp as Expense) > currentYM()
+                      ? ` · fatura ${ymLabel(expenseStart(exp as Expense))}`
+                      : ""
+                  }`,
               amount: isFixed ? exp.amount : monthlyAmount(exp as Expense),
               kind: "out",
               dim: Boolean(exp.paid),
@@ -571,6 +587,14 @@ export default function HomeScreen({
                     }}
                   >
                     {exp.paid ? "Paga" : "Pendente"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingExpense(exp as Expense)}
+                    aria-label={`Editar ${exp.title}`}
+                    style={{ width: 22, height: 22, borderRadius: "50%", border: `1px solid ${S.border}`, background: "none", fontSize: 11, cursor: "pointer" }}
+                  >
+                    ✏️
                   </button>
                   <button
                     type="button"
@@ -595,6 +619,66 @@ export default function HomeScreen({
           })}
         />
       </div>
+
+      {editingExpense && (
+        <EditModal
+          title="Editar despesa"
+          initial={{
+            title: editingExpense.title,
+            amount: String(editingExpense.amount),
+            installments: String(editingExpense.installments ?? 1),
+            category: editingExpense.category,
+            card: editingExpense.cardId,
+            date: editingExpense.date,
+          }}
+          fields={[
+            { key: "title", label: "Descrição", type: "text" },
+            { key: "amount", label: "Valor total (sua parte, R$)", type: "number", step: "0.01" },
+            { key: "installments", label: "Parcelas", type: "number", step: "1" },
+            { key: "category", label: "Categoria", type: "text", suggestions: CATEGORIES.map((c) => c.label) },
+            {
+              key: "card",
+              label: "Pagamento",
+              type: "select",
+              options: [
+                { value: "cash", label: "💵 Dinheiro" },
+                ...cards.map((c) => ({ value: c.id, label: `${c.name} · ${c.bank}` })),
+              ],
+            },
+            { key: "date", label: "Data", type: "date" },
+          ]}
+          onClose={() => setEditingExpense(null)}
+          preview={(v) => invoiceNote(v.date || editingExpense.date, cards.find((c) => c.id === v.card))}
+          onSave={(v) => {
+            const amount = parseFloat(v.amount.replace(",", "."));
+            const n = parseInt(v.installments, 10);
+            const category = v.category.trim();
+            if (!(amount > 0)) return "Informe um valor maior que zero.";
+            if (!(n >= 1 && n <= 60)) return "As parcelas devem ficar entre 1 e 60.";
+            if (!category) return "Informe a categoria.";
+            const card = cards.find((c) => c.id === v.card);
+            if (card) {
+              const oldUsage =
+                !editingExpense.paid && editingExpense.cardId === card.id ? editingExpense.amount : 0;
+              const available = card.limit - (cardUsage[card.id] ?? 0) + oldUsage;
+              if (amount > available + 0.005) {
+                return `Passa do limite do cartão ${card.name}. Disponível: ${fmt(Math.max(available, 0))}`;
+              }
+            }
+            onEditExpense(editingExpense.id, {
+              title: v.title.trim() || category,
+              amount: Math.round(amount * 100) / 100,
+              installments: n,
+              category,
+              categoryIcon: CATEGORIES.find((c) => c.label === category)?.icon ?? "📦",
+              cardId: v.card,
+              date: v.date || editingExpense.date,
+              startMonth: invoiceMonth(v.date || editingExpense.date, card),
+            });
+            return null;
+          }}
+        />
+      )}
 
       {/* Borrowers */}
       <div style={{ margin: "20px 0 0" }}>

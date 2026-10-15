@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { fmt } from "../data/mockData";
-import { buildStatement, paidCount, planAdvance } from "../utils/finance";
+import { buildStatement, invoiceMonth, invoiceNote, localToday, paidCount, planAdvance, ymLabel } from "../utils/finance";
 import type { Card, Friend, Debt, Screen } from "../data/mockData";
 import { getCurrentMonthOwed } from "../utils/finance";
 import { S } from "../theme";
 import StatementList, { type StatementRow } from "../components/Statement";
+import EditModal from "../components/EditModal";
 
 
 const CARD_COLOR: Record<string, string> = {
@@ -39,6 +40,11 @@ interface Props {
   onReactivateDebt: (friendId: string, debtId: string) => void;
   pixKey: string;
   onUpdateFriend: (friendId: string, name: string, phone: string) => void;
+  onEditDebt: (
+    friendId: string,
+    debtId: string,
+    v: { title: string; totalValue: number; installments: number; cardId: string; date: string },
+  ) => void;
   onRegisterAdvance: (friendId: string, amount: number) => void;
   onUndoAdvance: (friendId: string, advanceId: string) => void;
   initialOpenAddDebt?: boolean;
@@ -55,6 +61,7 @@ export default function DebtorProfileScreen({
   onReactivateDebt,
   pixKey,
   onUpdateFriend,
+  onEditDebt,
   onRegisterAdvance,
   onUndoAdvance,
   initialOpenAddDebt = false,
@@ -67,6 +74,7 @@ export default function DebtorProfileScreen({
   const [newInstall, setNewInstall] = useState("1");
   const [toast, setToast] = useState("");
   const [actionDebtId, setActionDebtId] = useState<string | null>(null);
+  const [editDebtId, setEditDebtId] = useState<string | null>(null);
   useEffect(() => {
     setDebts(friend.debts);
   }, [friend.debts]);
@@ -77,7 +85,7 @@ export default function DebtorProfileScreen({
     }
   }, [initialOpenAddDebt, friend.id]);
 
-  const currentMonth = new Date().toISOString().slice(0, 7);
+  const currentMonth = localToday().slice(0, 7);
   const visiblePaid = debts.filter(
     (d) => d.paid && (!d.paidMonth || d.paidMonth === currentMonth),
   );
@@ -145,8 +153,8 @@ export default function DebtorProfileScreen({
       amount: installmentValue,
       current: 1,
       total: installmentsCount,
-      date: new Date().toISOString().split("T")[0],
-      startMonth: new Date().toISOString().slice(0, 7),
+      date: localToday(),
+      startMonth: invoiceMonth(localToday(), debtCard),
       paid: false,
     };
     onAddDebt(friend.id, nd);
@@ -163,7 +171,7 @@ export default function DebtorProfileScreen({
   };
 
   const pad2 = (n: number) => String(n).padStart(2, "0");
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = localToday();
   const cardLabel = (id: string) =>
     id === "cash" ? "Dinheiro" : (cards.find((c) => c.id === id)?.bank ?? CARD_NAME[id] ?? "Cartão");
 
@@ -180,7 +188,11 @@ export default function DebtorProfileScreen({
       icon: debt.cardId === "cash" ? "💵" : "💳",
       iconColor: CARD_COLOR[debt.cardId] ?? S.purple,
       title: debt.title,
-      subtitle: `${cardLabel(debt.cardId)} · ${debt.total > 1 ? `${done}/${debt.total} pagas` : "à vista"}`,
+      subtitle: `${cardLabel(debt.cardId)} · ${debt.total > 1 ? `${done}/${debt.total} pagas` : "à vista"}${
+        debt.startMonth && debt.cardId !== "cash" && debt.startMonth > localToday().slice(0, 7)
+          ? ` · fatura ${ymLabel(debt.startMonth)}`
+          : ""
+      }`,
       amount: debt.amount,
       kind: "out",
       dim: debt.paid,
@@ -706,6 +718,70 @@ export default function DebtorProfileScreen({
         </div>
       )}
 
+      {editDebtId && (() => {
+        const target = debts.find((x) => x.id === editDebtId);
+        if (!target) return null;
+        const doneNow = target.paid ? target.total : paidCount(target);
+        return (
+          <EditModal
+            title="Editar dívida"
+            initial={{
+              title: target.title,
+              total: String(Math.round(target.amount * target.total * 100) / 100),
+              installments: String(target.total),
+              card: target.cardId,
+              date: target.date ?? "",
+            }}
+            fields={[
+              { key: "title", label: "Descrição", type: "text" },
+              { key: "total", label: "Valor total (R$)", type: "number", step: "0.01" },
+              { key: "installments", label: "Parcelas", type: "number", step: "1" },
+              {
+                key: "card",
+                label: "Pagamento",
+                type: "select",
+                options: [
+                  { value: "cash", label: "💵 Dinheiro" },
+                  ...cards.map((c) => ({ value: c.id, label: `${c.name} · ${c.bank}` })),
+                ],
+              },
+              { key: "date", label: "Data da compra", type: "date" },
+            ]}
+            onClose={() => setEditDebtId(null)}
+            preview={(v) => invoiceNote(v.date || target.date || localToday(), cards.find((c) => c.id === v.card))}
+            onSave={(v) => {
+              const totalValue = parseFloat(v.total.replace(",", "."));
+              const n = parseInt(v.installments, 10);
+              if (!v.title.trim()) return "Informe a descrição da dívida.";
+              if (!(totalValue > 0)) return "Informe um valor maior que zero.";
+              if (!(n >= 1 && n <= 60)) return "As parcelas devem ficar entre 1 e 60.";
+              if (n < doneNow) return `Já foram pagas ${doneNow} parcelas. Use pelo menos ${doneNow}.`;
+              const card = cards.find((c) => c.id === v.card);
+              if (card) {
+                const perInstallment = Math.round((totalValue / n) * 100) / 100;
+                const oldUsage =
+                  !target.paid && target.cardId === card.id
+                    ? target.amount * Math.max(target.total - doneNow, 0)
+                    : 0;
+                const available = card.limit - (cardUsage[card.id] ?? 0) + oldUsage;
+                if (perInstallment * Math.max(n - doneNow, 0) > available + 0.005) {
+                  return `Passa do limite do cartão ${card.name}. Disponível: ${fmt(Math.max(available, 0))}`;
+                }
+              }
+              onEditDebt(friend.id, target.id, {
+                title: v.title.trim(),
+                totalValue,
+                installments: n,
+                cardId: v.card,
+                date: v.date,
+              });
+              showToast("Dívida atualizada ✓");
+              return null;
+            }}
+          />
+        );
+      })()}
+
       {actionDebtId && (
         <div
           style={{
@@ -741,6 +817,22 @@ export default function DebtorProfileScreen({
               Ações da dívida
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <button
+                onClick={() => {
+                  setEditDebtId(actionDebtId);
+                  setActionDebtId(null);
+                }}
+                style={{
+                  padding: "10px",
+                  borderRadius: 12,
+                  background: `${S.purple}15`,
+                  border: `1px solid ${S.purple}40`,
+                  color: S.purple,
+                  fontWeight: 700,
+                }}
+              >
+                ✏️ Editar dívida
+              </button>
               <button
                 onClick={() => {
                   handleMarkPaid(actionDebtId);
