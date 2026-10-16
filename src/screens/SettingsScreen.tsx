@@ -3,6 +3,7 @@ import { fmt } from "../data/mockData";
 import type { Card, Expense, FixedExpense, Friend, Screen } from "../data/mockData";
 import { S } from "../theme";
 import LogoutButton from "../components/LogoutButton";
+import InvoiceModal from "../components/InvoiceModal";
 
 
 const CARD_COLOR: Record<string, string> = {
@@ -12,6 +13,7 @@ const CARD_COLOR: Record<string, string> = {
 };
 
 interface Props {
+  onSaveInvoice: (cardId: string, ym: string, value: number | null) => void;
   pixKey: string;
   onChangePix: (pix: string) => void;
   cardUsage: Record<string, number>;
@@ -33,6 +35,7 @@ interface Props {
 }
 
 export default function SettingsScreen({
+  onSaveInvoice,
   pixKey,
   onChangePix,
   cardUsage,
@@ -58,6 +61,7 @@ export default function SettingsScreen({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editCard, setEditCard] = useState("");
+  const [invoiceCardId, setInvoiceCardId] = useState<string | null>(null);
   const [editError, setEditError] = useState("");
   const [editAmount, setEditAmount] = useState("");
   const [showBankInput, setShowBankInput] = useState(false);
@@ -287,6 +291,17 @@ export default function SettingsScreen({
         </p>
       </div>
 
+      {invoiceCardId && cards.find((c) => c.id === invoiceCardId) && (
+        <InvoiceModal
+          card={cards.find((c) => c.id === invoiceCardId) as Card}
+          expenses={expenses}
+          friends={friends}
+          fixedExpenses={fixedExpenses}
+          onSave={onSaveInvoice}
+          onClose={() => setInvoiceCardId(null)}
+        />
+      )}
+
       {/* Credit Cards */}
       <div style={{ margin: "20px 20px 0" }}>
         <div
@@ -297,9 +312,14 @@ export default function SettingsScreen({
             marginBottom: 12,
           }}
         >
-          <p style={{ color: S.text, fontSize: 15, fontWeight: 600 }}>
-            Meus Cartões
-          </p>
+          <div>
+            <p style={{ color: S.text, fontSize: 15, fontWeight: 600 }}>
+              Meus Cartões
+            </p>
+            <p style={{ color: S.muted, fontSize: 11, marginTop: 2 }}>
+              Toque num cartão para ver e conferir a fatura
+            </p>
+          </div>
           <button
             onClick={() => navigate("addCard")}
             style={{
@@ -329,7 +349,10 @@ export default function SettingsScreen({
             return (
               <div
                 key={card.id}
+                onClick={() => setInvoiceCardId(card.id)}
+                title="Ver fatura"
                 style={{
+                  cursor: "pointer",
                   background: `linear-gradient(135deg, ${color}20, ${color}08)`,
                   border: `1px solid ${color}30`,
                   borderRadius: 18,

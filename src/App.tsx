@@ -230,6 +230,18 @@ export default function App() {
     setExpenses((prev) => prev.filter((expense) => expense.cardId !== cardId));
   };
 
+  const saveInvoice = (cardId: string, ym: string, value: number | null) => {
+    setCards((prev) =>
+      prev.map((card) => {
+        if (card.id !== cardId) return card;
+        const invoices = { ...(card.invoices ?? {}) };
+        if (value === null) delete invoices[ym];
+        else invoices[ym] = value;
+        return { ...card, invoices };
+      }),
+    );
+  };
+
   const updateCard = (updatedCard: Card) => {
     setCards((prev) =>
       prev.map((card) => (card.id === updatedCard.id ? updatedCard : card)),
@@ -680,6 +692,7 @@ export default function App() {
           )}
           {screen === "settings" && (
             <SettingsScreen
+              onSaveInvoice={saveInvoice}
               pixKey={pixKey}
               onChangePix={setPixKey}
               cardUsage={cardUsage}

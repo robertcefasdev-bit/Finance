@@ -15,6 +15,7 @@ export interface Card {
   closing: number;
   due: number;
   color: string;
+  invoices?: Record<string, number>; // valor da fatura do banco por mês ("AAAA-MM")
 }
 
 export interface AdvanceItem {

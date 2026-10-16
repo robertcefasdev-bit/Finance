@@ -11,7 +11,7 @@ import {
   Cell,
 } from "recharts";
 import { fmt } from "../data/mockData";
-import { commitColor, commitLabel, currentYM, expenseStart, invoiceMonth, invoiceNote, monthlyAmount, ymLabel } from "../utils/finance";
+import { commitColor, commitLabel, currentYM, expenseStart, invoiceMonth, invoiceNote, lastOwnMonthOffset, monthlyAmount, ownMonthAmount, ymLabel } from "../utils/finance";
 import type {
   Screen,
   Card,
@@ -172,6 +172,24 @@ export default function HomeScreen({
     .filter((e) => !e.paid && expenseStart(e) <= currentYM())
     .reduce((s, e) => s + monthlyAmount(e), 0);
   const totalExpenses = baseExpenses + activeFixedExpenses;
+
+  // Risco por mês: se este mês não tem despesa minha, mostra o próximo mês que tiver,
+  // e lista os meses seguintes até onde vai a minha última dívida.
+  const riskMonths = (() => {
+    const now = new Date();
+    const last = lastOwnMonthOffset(expenses);
+    return Array.from({ length: last + 1 }, (_, off) => {
+      const ref = new Date(now.getFullYear(), now.getMonth() + off, 1);
+      const own = off === 0 ? baseExpenses : ownMonthAmount(expenses, ref);
+      return { off, ref, own, total: own + activeFixedExpenses };
+    });
+  })();
+  const focusMonth =
+    baseExpenses > 0
+      ? riskMonths[0]
+      : (riskMonths.find((r) => r.off > 0 && r.own > 0) ?? riskMonths[0]);
+  const upcomingMonths = riskMonths.filter((r) => r.off > focusMonth.off && r.own > 0);
+  const monthName = (d: Date) => d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
   const chartData = Array.from({ length: 6 }, (_, index) => ({
     month: `${["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"][new Date().getMonth() + index >= 12 ? new Date().getMonth() + index - 12 : new Date().getMonth() + index]} ${new Date().getFullYear() + (new Date().getMonth() + index >= 12 ? 1 : 0)}`,
     salary,
@@ -332,11 +350,45 @@ export default function HomeScreen({
               Despesas
             </p>
             <p style={{ fontSize: 22, fontWeight: 700, color: S.purple }}>
-              {fmt(totalExpenses)}
+              {fmt(focusMonth.total)}
             </p>
           </div>
         </div>
-        <CommitBar pct={salary > 0 ? (totalExpenses / salary) * 100 : 0} />
+        {focusMonth.off > 0 && (
+          <p style={{ color: S.orange, fontSize: 12, marginBottom: 10 }}>
+            📅 Sem despesas suas neste mês. Mostrando {monthName(focusMonth.ref)}.
+          </p>
+        )}
+        <CommitBar
+          key={focusMonth.off}
+          pct={salary > 0 ? (focusMonth.total / salary) * 100 : 0}
+        />
+        {upcomingMonths.length > 0 && (
+          <div style={{ marginTop: 16, borderTop: `1px solid ${S.border}`, paddingTop: 12 }}>
+            <p style={{ color: S.muted, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'JetBrains Mono', monospace", marginBottom: 8 }}>
+              Risco nos próximos meses
+            </p>
+            {upcomingMonths.map((r) => {
+              const pct = salary > 0 ? (r.total / salary) * 100 : 0;
+              const color = commitColor(pct);
+              return (
+                <div key={r.off} style={{ marginBottom: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
+                    <span style={{ color: S.text, textTransform: "capitalize" }}>
+                      {monthName(r.ref)}
+                    </span>
+                    <span style={{ color, fontWeight: 700 }}>
+                      {fmt(r.total)} · {Math.round(pct)}%
+                    </span>
+                  </div>
+                  <div style={{ background: S.border, borderRadius: 6, height: 6, overflow: "hidden" }}>
+                    <div style={{ width: `${Math.min(pct, 100)}%`, height: "100%", background: color, borderRadius: 6, transition: "width 0.6s ease, background 0.6s ease" }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Chart toggle */}

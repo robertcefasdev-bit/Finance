@@ -370,3 +370,69 @@ export function expenseMonthInfo(e: Expense, ref: Date) {
   const total = e.installments ?? 1;
   return { diff, total, current: Math.min(Math.max(diff + 1, 1), total) };
 }
+
+// ---------- Fatura: o que está registrado em cada mês ----------
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+export function invoiceBreakdown(
+  card: Card,
+  ym: string,
+  expenses: Expense[],
+  friends: Friend[],
+  fixedExpenses: FixedExpense[],
+) {
+  const [y, m] = ym.split("-").map(Number);
+  const ref = new Date(y, m - 1, 1);
+  // despesas pagas também contam: a fatura do banco inclui tudo que foi cobrado
+  const mine = expenses
+    .filter((e) => e.cardId === card.id)
+    .reduce((sum, e) => {
+      const info = expenseMonthInfo(e, ref);
+      return info.diff >= 0 && info.diff < info.total ? sum + monthlyAmount(e) : sum;
+    }, 0);
+  const fixed = fixedExpenses
+    .filter((fe) => fe.active && fe.cardId === card.id)
+    .reduce((sum, fe) => sum + fe.amount, 0);
+  const debtors = friends
+    .map((friend) => ({
+      id: friend.id,
+      name: friend.name,
+      amount: round2(
+        friend.debts
+          .filter((d) => d.cardId === card.id && installmentNumber(d, ref) !== null)
+          .reduce((sum, d) => sum + d.amount, 0),
+      ),
+    }))
+    .filter((d) => d.amount > 0);
+  const total = round2(mine + fixed + debtors.reduce((sum, d) => sum + d.amount, 0));
+  return { mine: round2(mine), fixed: round2(fixed), debtors, total };
+}
+
+// ---------- Risco por mês (só despesas minhas) ----------
+const monthOffset = (from: Date, ym: string) => {
+  const [y, m] = ym.split("-").map(Number);
+  return (y - from.getFullYear()) * 12 + (m - 1 - from.getMonth());
+};
+
+// Valor das minhas despesas em aberto que caem no mês de ref
+export function ownMonthAmount(expenses: Expense[], ref: Date) {
+  return round2(
+    expenses
+      .filter((e) => !e.paid)
+      .reduce((sum, e) => {
+        const info = expenseMonthInfo(e, ref);
+        return info.diff >= 0 && info.diff < info.total ? sum + monthlyAmount(e) : sum;
+      }, 0),
+  );
+}
+
+// Quantos meses à frente ainda tenho despesa minha em aberto (0 = só neste mês)
+export function lastOwnMonthOffset(expenses: Expense[]) {
+  const now = new Date();
+  return expenses
+    .filter((e) => !e.paid)
+    .reduce(
+      (max, e) => Math.max(max, monthOffset(now, expenseStart(e)) + (e.installments ?? 1) - 1),
+      0,
+    );
+}

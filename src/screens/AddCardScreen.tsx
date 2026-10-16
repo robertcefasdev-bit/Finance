@@ -83,6 +83,7 @@ export default function AddCardScreen({
       closing: parseInt(closing, 10),
       due: parseInt(due, 10),
       color,
+      invoices: editingCard?.invoices,
     };
 
     if (editingCard) {
