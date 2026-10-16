@@ -22,6 +22,7 @@ import type {
 import { S } from "../theme";
 import StatementList, { type StatementRow } from "../components/Statement";
 import EditModal from "../components/EditModal";
+import MoreMenu from "../components/MoreMenu";
 import { CATEGORIES } from "./AddExpenseScreen";
 
 
@@ -162,6 +163,9 @@ export default function HomeScreen({
   onTogglePaid,
 }: Props) {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [selectedOff, setSelectedOff] = useState<number | null>(null);
+  const [riskOpen, setRiskOpen] = useState(false);
+  const [cardFilter, setCardFilter] = useState("all");
   const [chartType, setChartType] = useState<"pie" | "line">("pie");
 
   const totalOwed = friends.reduce((s, f) => s + f.totalOwed, 0);
@@ -184,11 +188,12 @@ export default function HomeScreen({
       return { off, ref, own, total: own + activeFixedExpenses };
     });
   })();
+  // só aparecem os meses em que existe despesa minha
+  const pillMonths = riskMonths.filter((r) => r.own > 0);
   const focusMonth =
-    baseExpenses > 0
-      ? riskMonths[0]
-      : (riskMonths.find((r) => r.off > 0 && r.own > 0) ?? riskMonths[0]);
-  const upcomingMonths = riskMonths.filter((r) => r.off > focusMonth.off && r.own > 0);
+    pillMonths.find((r) => r.off === selectedOff) ?? pillMonths[0] ?? riskMonths[0];
+  const shortMonth = (d: Date) =>
+    `${["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"][d.getMonth()]} ${d.getFullYear()}`;
   const monthName = (d: Date) => d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
   const chartData = Array.from({ length: 6 }, (_, index) => ({
     month: `${["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"][new Date().getMonth() + index >= 12 ? new Date().getMonth() + index - 12 : new Date().getMonth() + index]} ${new Date().getFullYear() + (new Date().getMonth() + index >= 12 ? 1 : 0)}`,
@@ -217,12 +222,20 @@ export default function HomeScreen({
         title: expense.name,
         category: "Despesa fixa",
         categoryIcon: "🧾",
-        cardId: "",
+        cardId: expense.cardId ?? "",
         amount: expense.amount,
         date: "",
         kind: "fixed" as const,
       })),
   ];
+
+  // filtro por cartão na lista de despesas
+  const hasCash = visibleExpenses.some((e) => e.cardId === "cash");
+  const filteredExpenses =
+    cardFilter === "all" ? visibleExpenses : visibleExpenses.filter((e) => e.cardId === cardFilter);
+  const filteredOpenTotal = filteredExpenses
+    .filter((e) => !e.paid)
+    .reduce((sum, e) => sum + (e.kind === "fixed" ? e.amount : monthlyAmount(e)), 0);
 
   const daysUntilClosing = (day: number) => {
     const today = 6;
@@ -312,6 +325,41 @@ export default function HomeScreen({
           border: `1px solid ${S.border}`,
         }}
       >
+        {(pillMonths.length > 1 || (pillMonths.length === 1 && pillMonths[0].off > 0)) && (
+          <div
+            className="scrollbar-hide"
+            style={{ display: "flex", gap: 8, overflowX: "auto", marginBottom: 14, paddingBottom: 2 }}
+          >
+            {pillMonths.map((r) => {
+              const active = r.off === focusMonth.off;
+              return (
+                <button
+                  key={r.off}
+                  onClick={() => setSelectedOff(r.off)}
+                  style={{
+                    flexShrink: 0,
+                    whiteSpace: "nowrap",
+                    padding: "8px 16px",
+                    borderRadius: 999,
+                    fontSize: 12,
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontWeight: active ? 700 : 500,
+                    cursor: "pointer",
+                    border: active ? "none" : `1px solid ${S.border}`,
+                    background: active
+                      ? `linear-gradient(135deg, ${S.purpleDim}, ${S.purple})`
+                      : S.bg,
+                    color: active ? "#fff" : S.muted,
+                    boxShadow: active ? `0 0 14px ${S.purple}55` : "none",
+                    transition: "all 0.2s",
+                  }}
+                >
+                  {shortMonth(r.ref)}
+                </button>
+              );
+            })}
+          </div>
+        )}
         <div
           style={{
             display: "flex",
@@ -354,39 +402,74 @@ export default function HomeScreen({
             </p>
           </div>
         </div>
-        {focusMonth.off > 0 && (
-          <p style={{ color: S.orange, fontSize: 12, marginBottom: 10 }}>
-            📅 Sem despesas suas neste mês. Mostrando {monthName(focusMonth.ref)}.
-          </p>
-        )}
         <CommitBar
           key={focusMonth.off}
           pct={salary > 0 ? (focusMonth.total / salary) * 100 : 0}
         />
-        {upcomingMonths.length > 0 && (
-          <div style={{ marginTop: 16, borderTop: `1px solid ${S.border}`, paddingTop: 12 }}>
-            <p style={{ color: S.muted, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'JetBrains Mono', monospace", marginBottom: 8 }}>
-              Risco nos próximos meses
-            </p>
-            {upcomingMonths.map((r) => {
-              const pct = salary > 0 ? (r.total / salary) * 100 : 0;
-              const color = commitColor(pct);
-              return (
-                <div key={r.off} style={{ marginBottom: 10 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
-                    <span style={{ color: S.text, textTransform: "capitalize" }}>
-                      {monthName(r.ref)}
-                    </span>
-                    <span style={{ color, fontWeight: 700 }}>
-                      {fmt(r.total)} · {Math.round(pct)}%
-                    </span>
-                  </div>
-                  <div style={{ background: S.border, borderRadius: 6, height: 6, overflow: "hidden" }}>
-                    <div style={{ width: `${Math.min(pct, 100)}%`, height: "100%", background: color, borderRadius: 6, transition: "width 0.6s ease, background 0.6s ease" }} />
-                  </div>
-                </div>
-              );
-            })}
+        {pillMonths.length > 1 && (
+          <div style={{ marginTop: 16, borderTop: `1px solid ${S.border}`, paddingTop: 10 }}>
+            <button
+              onClick={() => setRiskOpen((v) => !v)}
+              aria-expanded={riskOpen}
+              style={{
+                width: "100%",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                background: "none",
+                border: "none",
+                padding: "4px 0",
+                cursor: "pointer",
+              }}
+            >
+              <span style={{ color: S.muted, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'JetBrains Mono', monospace" }}>
+                Risco nos próximos meses
+              </span>
+              <span
+                style={{
+                  color: S.muted,
+                  fontSize: 14,
+                  display: "inline-block",
+                  transform: riskOpen ? "rotate(180deg)" : "none",
+                  transition: "transform 0.2s",
+                }}
+              >
+                ▾
+              </span>
+            </button>
+            {riskOpen && (
+              <div style={{ marginTop: 10 }}>
+                {pillMonths.map((r) => {
+                  const pct = salary > 0 ? (r.total / salary) * 100 : 0;
+                  const color = commitColor(pct);
+                  return (
+                    <div
+                      key={r.off}
+                      onClick={() => setSelectedOff(r.off)}
+                      style={{ marginBottom: 10, cursor: "pointer" }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
+                        <span
+                          style={{
+                            color: r.off === focusMonth.off ? S.purple : S.text,
+                            fontWeight: r.off === focusMonth.off ? 700 : 400,
+                            textTransform: "capitalize",
+                          }}
+                        >
+                          {monthName(r.ref)}
+                        </span>
+                        <span style={{ color, fontWeight: 700 }}>
+                          {fmt(r.total)} · {Math.round(pct)}%
+                        </span>
+                      </div>
+                      <div style={{ background: S.border, borderRadius: 6, height: 6, overflow: "hidden" }}>
+                        <div style={{ width: `${Math.min(pct, 100)}%`, height: "100%", background: color, borderRadius: 6, transition: "width 0.6s ease, background 0.6s ease" }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -595,14 +678,51 @@ export default function HomeScreen({
             + Nova
           </button>
         </div>
+        <div
+          className="scrollbar-hide"
+          style={{ display: "flex", gap: 8, overflowX: "auto", marginBottom: 12, paddingBottom: 2 }}
+        >
+          {[
+            { id: "all", label: "Todos" },
+            ...cards.map((c) => ({ id: c.id, label: c.name })),
+            ...(hasCash ? [{ id: "cash", label: "💵 Dinheiro" }] : []),
+          ].map((chip) => {
+            const active = cardFilter === chip.id;
+            return (
+              <button
+                key={chip.id}
+                onClick={() => setCardFilter(chip.id)}
+                style={{
+                  flexShrink: 0,
+                  whiteSpace: "nowrap",
+                  padding: "7px 14px",
+                  borderRadius: 999,
+                  fontSize: 12,
+                  fontWeight: active ? 700 : 500,
+                  cursor: "pointer",
+                  border: active ? "none" : `1px solid ${S.border}`,
+                  background: active ? `linear-gradient(135deg, ${S.purpleDim}, ${S.purple})` : S.surface,
+                  color: active ? "#fff" : S.muted,
+                }}
+              >
+                {chip.label}
+              </button>
+            );
+          })}
+        </div>
+        {cardFilter !== "all" && (
+          <p style={{ color: S.muted, fontSize: 12, marginBottom: 10 }}>
+            {filteredExpenses.length} despesa(s) · em aberto: {fmt(filteredOpenTotal)}
+          </p>
+        )}
         <StatementList
           undatedLabel="Despesas fixas"
           emptyText="Nenhuma despesa ainda."
-          rows={visibleExpenses.map((exp): StatementRow => {
+          rows={filteredExpenses.map((exp): StatementRow => {
             const card = cards.find((c) => c.id === exp.cardId);
             const isFixed = exp.kind === "fixed";
             const where = isFixed
-              ? "Despesa fixa · todo mês"
+              ? `Despesa fixa · ${card ? card.name : "todo mês"}`
               : exp.cardId === "cash"
                 ? "💵 Dinheiro"
                 : (card?.bank ?? "Cartão");
@@ -640,31 +760,21 @@ export default function HomeScreen({
                   >
                     {exp.paid ? "Paga" : "Pendente"}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditingExpense(exp as Expense)}
-                    aria-label={`Editar ${exp.title}`}
-                    style={{ width: 22, height: 22, borderRadius: "50%", border: `1px solid ${S.border}`, background: "none", fontSize: 11, cursor: "pointer" }}
-                  >
-                    ✏️
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onRemoveExpense(exp.id)}
-                    aria-label={`Remover ${exp.title}`}
-                    style={{
-                      width: 22,
-                      height: 22,
-                      borderRadius: "50%",
-                      border: "1px solid #ef444440",
-                      background: "#ef444415",
-                      color: "#ef4444",
-                      fontSize: 12,
-                      cursor: "pointer",
-                    }}
-                  >
-                    ×
-                  </button>
+                  <MoreMenu
+                    label={`Opções de ${exp.title}`}
+                    size={26}
+                    items={[
+                      { icon: "✏️", label: "Editar", onClick: () => setEditingExpense(exp as Expense) },
+                      {
+                        icon: "🗑️",
+                        label: "Excluir",
+                        danger: true,
+                        onClick: () => {
+                          if (window.confirm(`Excluir "${exp.title}"?`)) onRemoveExpense(exp.id);
+                        },
+                      },
+                    ]}
+                  />
                 </>
               ),
             };

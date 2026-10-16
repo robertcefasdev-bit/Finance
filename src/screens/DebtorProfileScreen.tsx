@@ -6,6 +6,7 @@ import { getCurrentMonthOwed } from "../utils/finance";
 import { S } from "../theme";
 import StatementList, { type StatementRow } from "../components/Statement";
 import EditModal from "../components/EditModal";
+import MoreMenu from "../components/MoreMenu";
 
 
 const CARD_COLOR: Record<string, string> = {
@@ -318,14 +319,8 @@ export default function DebtorProfileScreen({
                 📱 {friend.phone}
               </p>
             )}
-            <button
-              onClick={() => setEditingInfo(true)}
-              style={{ marginTop: 6, background: "none", border: "none", color: S.purple, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0 }}
-            >
-              ✏️ Editar devedor
-            </button>
           </div>
-          <div style={{ marginLeft: "auto" }}>
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
             <span
               style={{
                 padding: "4px 10px",
@@ -340,6 +335,10 @@ export default function DebtorProfileScreen({
             >
               {friend.status === "paid" ? "Em dia" : "Pendente"}
             </span>
+            <MoreMenu
+              label="Opções do devedor"
+              items={[{ icon: "✏️", label: "Editar devedor", onClick: () => setEditingInfo(true) }]}
+            />
           </div>
         </div>
 

@@ -4,6 +4,7 @@ import type { Card, Expense, FixedExpense, Friend, Screen } from "../data/mockDa
 import { S } from "../theme";
 import LogoutButton from "../components/LogoutButton";
 import InvoiceModal from "../components/InvoiceModal";
+import MoreMenu from "../components/MoreMenu";
 
 
 const CARD_COLOR: Record<string, string> = {
@@ -448,52 +449,14 @@ export default function SettingsScreen({
                     zIndex: 2,
                   }}
                 >
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      onEditCard(card);
-                    }}
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: "50%",
-                      border: `1px solid ${S.border}`,
-                      background: S.surface2,
-                      color: S.text,
-                      fontSize: 13,
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    ✎
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      removeCard(card.id);
-                    }}
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: "50%",
-                      border: `1px solid #ef444440`,
-                      background: "#ef444415",
-                      color: "#ef4444",
-                      fontSize: 14,
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    ×
-                  </button>
+                  <MoreMenu
+                    label={`Opções de ${card.name}`}
+                    items={[
+                      { icon: "🧾", label: "Ver fatura", onClick: () => setInvoiceCardId(card.id) },
+                      { icon: "✏️", label: "Editar cartão", onClick: () => onEditCard(card) },
+                      { icon: "🗑️", label: "Excluir cartão", danger: true, onClick: () => removeCard(card.id) },
+                    ]}
+                  />
                 </div>
               </div>
             );
@@ -606,14 +569,20 @@ export default function SettingsScreen({
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 {editingId !== fe.id && (
                   <>
-                    <button aria-label={`Editar ${fe.name}`} onClick={() => startEdit(fe)} style={{ border: "none", background: "none", cursor: "pointer", fontSize: 15 }}>✏️</button>
-                    <button
-                      aria-label={`Remover ${fe.name}`}
-                      onClick={() => {
-                        if (window.confirm(`Remover "${fe.name}"?`)) onRemoveFixedExpense(fe.id);
-                      }}
-                      style={{ border: "none", background: "none", cursor: "pointer", fontSize: 15 }}
-                    >🗑️</button>
+                    <MoreMenu
+                      label={`Opções de ${fe.name}`}
+                      items={[
+                        { icon: "✏️", label: "Editar", onClick: () => startEdit(fe) },
+                        {
+                          icon: "🗑️",
+                          label: "Excluir",
+                          danger: true,
+                          onClick: () => {
+                            if (window.confirm(`Remover "${fe.name}"?`)) onRemoveFixedExpense(fe.id);
+                          },
+                        },
+                      ]}
+                    />
                   </>
                 )}
                 <button
