@@ -436,3 +436,35 @@ export function lastOwnMonthOffset(expenses: Expense[]) {
       0,
     );
 }
+
+// ---------- Ciclo do cartão: fatura aberta (fecha em N dias) ou fechada (vence em N dias) ----------
+function clampDay(year: number, month: number, day: number) {
+  const last = new Date(year, month + 1, 0).getDate();
+  return new Date(year, month, Math.min(day, last));
+}
+
+export function cardCycle(card: Card, now: Date = new Date()) {
+  const t = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const DAY = 86400000;
+  // último fechamento que já passou (no dia do fechamento a fatura ainda está aberta)
+  let closeDate = clampDay(t.getFullYear(), t.getMonth(), card.closing);
+  if (!(closeDate < t)) closeDate = clampDay(t.getFullYear(), t.getMonth() - 1, card.closing);
+  // vencimento dessa fatura (se o dia de vencer é antes do de fechar, vence no mês seguinte)
+  let dueDate = clampDay(closeDate.getFullYear(), closeDate.getMonth(), card.due);
+  if (dueDate <= closeDate) dueDate = clampDay(closeDate.getFullYear(), closeDate.getMonth() + 1, card.due);
+  if (t <= dueDate) {
+    return { phase: "closed" as const, days: Math.round((dueDate.getTime() - t.getTime()) / DAY) };
+  }
+  let next = clampDay(t.getFullYear(), t.getMonth(), card.closing);
+  if (next < t) next = clampDay(t.getFullYear(), t.getMonth() + 1, card.closing);
+  return { phase: "open" as const, days: Math.round((next.getTime() - t.getTime()) / DAY) };
+}
+
+export function cardCycleText(card: Card, now: Date = new Date()) {
+  const { phase, days } = cardCycle(card, now);
+  const when = (n: number, verb: string) =>
+    n === 0 ? `${verb} hoje!` : n === 1 ? `${verb} amanhã` : `${verb} em ${n} dias`;
+  return phase === "closed"
+    ? { phase, days, text: `Fechada · ${when(days, "vence")}` }
+    : { phase, days, text: when(days, "Fecha") };
+}

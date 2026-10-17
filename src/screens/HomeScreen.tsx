@@ -11,7 +11,7 @@ import {
   Cell,
 } from "recharts";
 import { fmt } from "../data/mockData";
-import { commitColor, commitLabel, currentYM, expenseStart, invoiceMonth, invoiceNote, lastOwnMonthOffset, monthlyAmount, ownMonthAmount, ymLabel } from "../utils/finance";
+import { cardCycle, cardCycleText, commitColor, commitLabel, currentYM, expenseStart, invoiceMonth, invoiceNote, lastOwnMonthOffset, monthlyAmount, ownMonthAmount, ymLabel } from "../utils/finance";
 import type {
   Screen,
   Card,
@@ -236,12 +236,6 @@ export default function HomeScreen({
   const filteredOpenTotal = filteredExpenses
     .filter((e) => !e.paid)
     .reduce((sum, e) => sum + (e.kind === "fixed" ? e.amount : monthlyAmount(e)), 0);
-
-  const daysUntilClosing = (day: number) => {
-    const today = 6;
-    const diff = day >= today ? day - today : 30 - today + day;
-    return diff;
-  };
 
   return (
     <div
@@ -894,9 +888,11 @@ export default function HomeScreen({
           className="scrollbar-hide"
         >
           {friends.map((f) => {
-            const daysClose = cards
-              .map((c) => daysUntilClosing(c.closing))
-              .sort()[0];
+            // aviso "!" quando alguma fatura fechada está perto de vencer
+            const soonDue = cards.some((c) => {
+              const cycle = cardCycle(c);
+              return cycle.phase === "closed" && cycle.days <= 3;
+            });
             return (
               <button
                 key={f.id}
@@ -942,7 +938,7 @@ export default function HomeScreen({
                   }}
                 >
                   {f.initials}
-                  {daysClose <= 3 && (
+                  {soonDue && (
                     <div
                       style={{
                         position: "absolute",
@@ -1041,7 +1037,9 @@ export default function HomeScreen({
           className="scrollbar-hide"
         >
           {cards.map((card) => {
-            const days = daysUntilClosing(card.closing);
+            const cycle = cardCycleText(card);
+            const statusColor =
+              cycle.phase === "closed" ? (cycle.days <= 3 ? "#ef4444" : S.orange) : S.green;
             return (
               <div
                 key={card.id}
@@ -1090,7 +1088,7 @@ export default function HomeScreen({
                   {card.name}
                 </p>
                 <p style={{ color: S.text2, fontSize: 10, marginTop: 2 }}>
-                  Fecha dia {card.closing}
+                  Fecha dia {card.closing} · Vence dia {card.due}
                 </p>
                 <div
                   style={{
@@ -1105,18 +1103,18 @@ export default function HomeScreen({
                       width: 6,
                       height: 6,
                       borderRadius: "50%",
-                      background: days <= 3 ? "#ef4444" : S.green,
-                      boxShadow: `0 0 5px ${days <= 3 ? "#ef4444" : S.green}`,
+                      background: statusColor,
+                      boxShadow: `0 0 5px ${statusColor}`,
                     }}
                   />
                   <p
                     style={{
-                      color: days <= 3 ? "#ef4444" : S.green,
+                      color: statusColor,
                       fontSize: 10,
                       fontFamily: "'JetBrains Mono', monospace",
                     }}
                   >
-                    {days === 0 ? "Fecha hoje!" : `Fecha em ${days} dias`}
+                    {cycle.text}
                   </p>
                 </div>
               </div>
