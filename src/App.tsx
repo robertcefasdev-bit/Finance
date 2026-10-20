@@ -8,6 +8,7 @@ import SettingsScreen from "./screens/SettingsScreen";
 import { cardUsed } from "./utils/finance";
 import AuthScreen from "./screens/AuthScreen";
 import { api } from "./utils/api";
+import { setHideValues } from "./data/mockData";
 import AddCardScreen from "./screens/AddCardScreen";
 import type {
   Screen,
@@ -84,6 +85,25 @@ export default function App() {
   const userName = username ?? "";
   const [theme, setTheme] = useState<ThemeMode>(readStoredTheme);
   applyTheme(theme);
+  // Censurar valores (privacidade): fica salvo neste aparelho
+  const [hideValues, setHide] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("finance-hide") === "1";
+    } catch {
+      return false;
+    }
+  });
+  setHideValues(hideValues);
+  const toggleHide = () => {
+    const next = !hideValues;
+    try {
+      localStorage.setItem("finance-hide", next ? "1" : "0");
+    } catch {
+      /* ignora */
+    }
+    setHide(next);
+  };
+
   const toggleTheme = () => {
     const next: ThemeMode = theme === "dark" ? "light" : "dark";
     storeTheme(next);
@@ -596,6 +616,33 @@ export default function App() {
         }}
       >
         <button
+          onClick={toggleHide}
+          aria-label={hideValues ? "Mostrar valores" : "Ocultar valores"}
+          title={hideValues ? "Mostrar valores" : "Ocultar valores"}
+          style={{
+            position: "absolute",
+            top: 10,
+            right: 56,
+            zIndex: 60,
+            width: 34,
+            height: 34,
+            borderRadius: "50%",
+            border: `1px solid ${S.border}`,
+            background: S.surface,
+            color: S.purple,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" />
+            <circle cx="12" cy="12" r="3" />
+            {hideValues && <line x1="3" y1="3" x2="21" y2="21" />}
+          </svg>
+        </button>
+        <button
           onClick={toggleTheme}
           aria-label={theme === "dark" ? "Mudar para tema claro" : "Mudar para tema escuro"}
           style={{
@@ -653,6 +700,7 @@ export default function App() {
               friends={friends}
               cardUsage={cardUsage}
               onAddExpense={addExpense}
+              onAddFixedExpense={addFixedExpense}
               onAddDebt={addDebtToFriend}
               routeData={routeData}
               onGoToDebtor={navigate}

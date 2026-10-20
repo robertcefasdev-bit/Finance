@@ -468,3 +468,18 @@ export function cardCycleText(card: Card, now: Date = new Date()) {
     ? { phase, days, text: `Fechada · ${when(days, "vence")}` }
     : { phase, days, text: when(days, "Fecha") };
 }
+
+// ---------- Campo de valor: a vírgula já vem no lugar ----------
+// Quem digita só coloca números: 1 → 0,01 · 123 → 1,23 · 12345 → 123,45
+export function maskMoney(raw: string) {
+  let digits = raw.replace(/\D/g, "").replace(/^0+/, "").slice(0, 12);
+  if (!digits) return "";
+  while (digits.length < 3) digits = `0${digits}`;
+  return `${digits.slice(0, -2)},${digits.slice(-2)}`;
+}
+
+// Número -> texto do campo (300 → "300,00")
+export const moneyStr = (n: number) => n.toFixed(2).replace(".", ",");
+
+// Texto do campo -> número ("1234,56" → 1234.56)
+export const parseMoney = (s: string) => parseFloat(s.replace(",", ".")) || 0;

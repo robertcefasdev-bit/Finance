@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { S } from "../theme";
+import { maskMoney } from "../utils/finance";
 
 export interface EditField {
   key: string;
   label: string;
-  type: "text" | "number" | "date" | "select";
+  type: "text" | "number" | "date" | "select" | "money";
   options?: { value: string; label: string }[];
   suggestions?: string[]; // sugestões para campos de texto
   step?: string;
@@ -78,13 +79,18 @@ export default function EditModal({
               ) : (
                 <>
                   <input
-                    type={field.type}
+                    type={field.type === "money" ? "text" : field.type}
                     step={field.step}
-                    inputMode={field.type === "number" ? "decimal" : undefined}
+                    inputMode={field.type === "money" ? "numeric" : field.type === "number" ? "decimal" : undefined}
                     list={field.suggestions ? `list-${field.key}` : undefined}
                     value={values[field.key] ?? ""}
                     placeholder={field.placeholder}
-                    onChange={(e) => setValues({ ...values, [field.key]: e.target.value })}
+                    onChange={(e) =>
+                      setValues({
+                        ...values,
+                        [field.key]: field.type === "money" ? maskMoney(e.target.value) : e.target.value,
+                      })
+                    }
                     style={{ ...input, marginTop: 6 }}
                   />
                   {field.suggestions && (

@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { fmt } from "../data/mockData";
+import { fmt, isHidden } from "../data/mockData";
 import type { Card, Expense, FixedExpense, Friend, Screen } from "../data/mockData";
+import { maskMoney, moneyStr, parseMoney } from "../utils/finance";
 import { S } from "../theme";
 import LogoutButton from "../components/LogoutButton";
 import InvoiceModal from "../components/InvoiceModal";
@@ -35,6 +36,10 @@ interface Props {
   onLogout: () => void;
 }
 
+// 71984224699 -> 719••••••99
+const maskPix = (key: string) =>
+  key.length <= 5 ? "•••••" : `${key.slice(0, 3)}${"•".repeat(Math.min(key.length - 5, 8))}${key.slice(-2)}`;
+
 export default function SettingsScreen({
   onSaveInvoice,
   pixKey,
@@ -63,6 +68,12 @@ export default function SettingsScreen({
   const [editName, setEditName] = useState("");
   const [editCard, setEditCard] = useState("");
   const [invoiceCardId, setInvoiceCardId] = useState<string | null>(null);
+  const [editingSalary, setEditingSalary] = useState(false);
+  const [salaryInput, setSalaryInput] = useState("");
+  const [editingPix, setEditingPix] = useState(false);
+  const [pixInput, setPixInput] = useState("");
+  const [showPix, setShowPix] = useState(false);
+  const [showAddFixed, setShowAddFixed] = useState(false);
   const [editError, setEditError] = useState("");
   const [editAmount, setEditAmount] = useState("");
   const [showBankInput, setShowBankInput] = useState(false);
@@ -74,7 +85,7 @@ export default function SettingsScreen({
   const startEdit = (fe: FixedExpense) => {
     setEditingId(fe.id);
     setEditName(fe.name);
-    setEditAmount(String(fe.amount));
+    setEditAmount(moneyStr(fe.amount));
     setEditCard(fe.cardId ?? "");
     setEditError("");
   };
@@ -142,6 +153,7 @@ export default function SettingsScreen({
       cardId: newFixedCard || undefined,
     });
     setNewFixedCard("");
+    setShowAddFixed(false);
     setNewExpenseName("");
     setNewExpenseAmount("");
   };
@@ -181,115 +193,120 @@ export default function SettingsScreen({
         <LogoutButton onLogout={onLogout} />
       </div>
 
-      {/* Salary */}
-      <div style={{ margin: "20px 20px 0" }}>
-        <p
-          style={{
-            color: S.text,
-            fontSize: 15,
-            fontWeight: 600,
-            marginBottom: 12,
-          }}
-        >
-          Salário Mensal
-        </p>
-        <div
-          style={{
-            background: S.surface,
-            border: `1px solid ${S.border}`,
-            borderRadius: 16,
-            padding: "16px",
-          }}
-        >
-          <label
-            style={{
-              color: S.muted,
-              fontSize: 11,
-              display: "block",
-              marginBottom: 8,
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-              fontFamily: "'JetBrains Mono', monospace",
-            }}
-          >
-            Valor Líquido
-          </label>
-          <div style={{ display: "flex", gap: 10 }}>
-            <div style={{ position: "relative", flex: 1 }}>
-              <span
-                style={{
-                  position: "absolute",
-                  left: 12,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  color: S.green,
-                  fontWeight: 700,
-                }}
-              >
-                R$
-              </span>
-              <input
-                type="number"
-                value={salary}
-                onChange={(e) =>
-                  onUpdateSalary(parseFloat(e.target.value) || 0)
-                }
-                style={{
-                  width: "100%",
-                  background: S.surface2,
-                  border: `1px solid ${S.border}`,
-                  borderRadius: 12,
-                  padding: "12px 12px 12px 36px",
-                  color: S.text,
-                  fontSize: 18,
-                  fontWeight: 700,
-                  outline: "none",
-                  fontFamily: "'JetBrains Mono', monospace",
-                }}
-                onFocus={(e) => {
-                  e.currentTarget.style.borderColor = S.green;
-                }}
-                onBlur={(e) => {
-                  e.currentTarget.style.borderColor = S.border;
-                }}
-              />
-            </div>
-            <button
-              onClick={handleSaveSalary}
-              style={{
-                padding: "12px 18px",
-                borderRadius: 12,
-                border: "none",
-                background: salarySaved
-                  ? `linear-gradient(135deg, #16a34a, ${S.green})`
-                  : `linear-gradient(135deg, ${S.purpleDim}, ${S.purple})`,
-                color: "#fff",
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: "pointer",
-                transition: "background 0.3s",
-              }}
-            >
-              {salarySaved ? "✓" : "Salvar"}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Chave Pix */}
+      {/* Perfil financeiro: salário e chave Pix ficam recolhidos */}
       <div style={{ margin: "20px 20px 0" }}>
         <p style={{ color: S.muted, fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "'JetBrains Mono', monospace", marginBottom: 8 }}>
-          Minha chave Pix
+          Meus dados
         </p>
-        <input
-          value={pixKey}
-          onChange={(e) => onChangePix(e.target.value)}
-          placeholder="🔑 CPF, e-mail, telefone ou chave aleatória"
-          style={{ width: "100%", background: S.surface, border: `1px solid ${S.border}`, borderRadius: 14, padding: "13px 14px", color: S.text, fontSize: 14, outline: "none" }}
-        />
-        <p style={{ color: S.muted, fontSize: 11, marginTop: 6 }}>
-          Vai junto no extrato enviado aos devedores.
-        </p>
+        <div style={{ background: S.surface, border: `1px solid ${S.border}`, borderRadius: 16, padding: "4px 16px" }}>
+          {/* Salário */}
+          <div style={{ padding: "12px 0", borderBottom: `1px solid ${S.border}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+              <div>
+                <p style={{ color: S.muted, fontSize: 11 }}>Salário mensal</p>
+                <p style={{ color: S.text, fontSize: 16, fontWeight: 700, marginTop: 2 }}>
+                  {salary > 0 ? fmt(salary) : "Não informado"}
+                </p>
+              </div>
+              {!editingSalary && (
+                <button
+                  onClick={() => {
+                    setSalaryInput(salary > 0 ? moneyStr(salary) : "");
+                    setEditingSalary(true);
+                  }}
+                  style={{ padding: "9px 14px", borderRadius: 10, background: S.surface2, color: S.purple, fontSize: 12, fontWeight: 700, cursor: "pointer", border: `1px solid ${S.border}` }}
+                >
+                  {salary > 0 ? "Editar" : "Informar"}
+                </button>
+              )}
+            </div>
+            {editingSalary && (
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <input
+                  autoFocus
+                  inputMode="numeric"
+                  value={salaryInput}
+                  onChange={(e) => setSalaryInput(maskMoney(e.target.value))}
+                  placeholder="0,00"
+                  style={{ flex: 1, background: S.surface2, border: `1px solid ${S.border}`, borderRadius: 10, padding: "10px 12px", color: S.text, fontSize: 15, outline: "none", minWidth: 0 }}
+                />
+                <button
+                  onClick={() => {
+                    onUpdateSalary(parseMoney(salaryInput));
+                    setEditingSalary(false);
+                  }}
+                  style={{ padding: "9px 14px", borderRadius: 10, border: "none", background: S.purple, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                >
+                  Salvar
+                </button>
+                <button onClick={() => setEditingSalary(false)} style={{ padding: "9px 14px", borderRadius: 10, border: "none", background: "transparent", color: S.muted, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                  Cancelar
+                </button>
+              </div>
+            )}
+          </div>
+          {/* Chave Pix */}
+          <div style={{ padding: "12px 0" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ color: S.muted, fontSize: 11 }}>Minha chave Pix</p>
+                <p style={{ color: S.text, fontSize: 15, fontWeight: 600, marginTop: 2, fontFamily: "'JetBrains Mono', monospace", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {pixKey
+                    ? showPix && !isHidden()
+                      ? pixKey
+                      : maskPix(pixKey)
+                    : "Não cadastrada"}
+                </p>
+              </div>
+              {!editingPix && (
+                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                  {pixKey && !isHidden() && (
+                    <button
+                      onClick={() => setShowPix((v) => !v)}
+                      aria-label={showPix ? "Ocultar chave" : "Mostrar chave"}
+                      style={{ padding: "9px 14px", borderRadius: 10, background: S.surface2, color: S.muted, fontSize: 12, fontWeight: 700, cursor: "pointer", border: `1px solid ${S.border}` }}
+                    >
+                      {showPix ? "Ocultar" : "Mostrar"}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      setPixInput(pixKey);
+                      setEditingPix(true);
+                    }}
+                    style={{ padding: "9px 14px", borderRadius: 10, background: S.surface2, color: S.purple, fontSize: 12, fontWeight: 700, cursor: "pointer", border: `1px solid ${S.border}` }}
+                  >
+                    {pixKey ? "Editar" : "Cadastrar"}
+                  </button>
+                </div>
+              )}
+            </div>
+            {editingPix && (
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <input
+                  autoFocus
+                  value={pixInput}
+                  onChange={(e) => setPixInput(e.target.value)}
+                  placeholder="CPF, e-mail, telefone ou chave aleatória"
+                  style={{ flex: 1, background: S.surface2, border: `1px solid ${S.border}`, borderRadius: 10, padding: "10px 12px", color: S.text, fontSize: 15, outline: "none", minWidth: 0 }}
+                />
+                <button
+                  onClick={() => {
+                    onChangePix(pixInput.trim());
+                    setEditingPix(false);
+                  }}
+                  style={{ padding: "9px 14px", borderRadius: 10, border: "none", background: S.purple, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                >
+                  Salvar
+                </button>
+                <button onClick={() => setEditingPix(false)} style={{ padding: "9px 14px", borderRadius: 10, border: "none", background: "transparent", color: S.muted, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                  Cancelar
+                </button>
+              </div>
+            )}
+            <p style={{ color: S.muted, fontSize: 11, marginTop: 8 }}>Vai junto no extrato enviado aos devedores.</p>
+          </div>
+        </div>
       </div>
 
       {invoiceCardId && cards.find((c) => c.id === invoiceCardId) && (
@@ -503,6 +520,25 @@ export default function SettingsScreen({
               </span>
             </p>
           </div>
+          <button
+            onClick={() => setShowAddFixed((v) => !v)}
+            aria-label={showAddFixed ? "Fechar" : "Adicionar despesa fixa"}
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: "50%",
+              border: "none",
+              background: showAddFixed ? S.surface2 : `linear-gradient(135deg, ${S.purpleDim}, ${S.purple})`,
+              color: showAddFixed ? S.muted : "#fff",
+              fontSize: 22,
+              lineHeight: 1,
+              cursor: "pointer",
+              transform: showAddFixed ? "rotate(45deg)" : "none",
+              transition: "transform 0.2s",
+            }}
+          >
+            +
+          </button>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {fixedExpenses.map((fe) => (
@@ -527,9 +563,9 @@ export default function SettingsScreen({
                     style={{ flex: 1, minWidth: 90, background: S.surface2, border: `1px solid ${S.border}`, borderRadius: 8, padding: "7px 10px", color: S.text, fontSize: 13, outline: "none" }}
                   />
                   <input
-                    type="number"
+                    inputMode="numeric"
                     value={editAmount}
-                    onChange={(e) => setEditAmount(e.target.value)}
+                    onChange={(e) => setEditAmount(maskMoney(e.target.value))}
                     style={{ width: 80, background: S.surface2, border: `1px solid ${S.border}`, borderRadius: 8, padding: "7px 10px", color: S.text, fontSize: 13, outline: "none" }}
                   />
                   <select
@@ -621,6 +657,7 @@ export default function SettingsScreen({
           ))}
 
           {/* Add new fixed */}
+          {showAddFixed && (
           <div
             style={{
               background: S.surface,
@@ -652,10 +689,10 @@ export default function SettingsScreen({
                 }}
               />
               <input
-                type="number"
+                inputMode="numeric"
                 value={newExpenseAmount}
-                onChange={(e) => setNewExpenseAmount(e.target.value)}
-                placeholder="R$"
+                onChange={(e) => setNewExpenseAmount(maskMoney(e.target.value))}
+                placeholder="0,00"
                 style={{
                   width: 80,
                   background: S.surface2,
@@ -720,6 +757,8 @@ export default function SettingsScreen({
               + Adicionar Despesa Fixa
             </button>
           </div>
+          )}
+
         </div>
       </div>
     </div>

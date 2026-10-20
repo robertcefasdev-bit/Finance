@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { fmt } from "../data/mockData";
-import { buildStatement, invoiceMonth, invoiceNote, localToday, paidCount, planAdvance, ymLabel } from "../utils/finance";
+import { buildStatement, invoiceMonth, invoiceNote, localToday, paidCount, planAdvance, ymLabel, maskMoney, moneyStr } from "../utils/finance";
 import type { Card, Friend, Debt, Screen } from "../data/mockData";
 import { getCurrentMonthOwed } from "../utils/finance";
 import { S } from "../theme";
@@ -564,9 +564,9 @@ export default function DebtorProfileScreen({
                   Valor (R$)
                 </label>
                 <input
-                  type="number"
+                  inputMode="numeric"
                   value={newAmount}
-                  onChange={(e) => setNewAmount(e.target.value)}
+                  onChange={(e) => setNewAmount(maskMoney(e.target.value))}
                   placeholder="0,00"
                   style={{
                     width: "100%",
@@ -726,14 +726,14 @@ export default function DebtorProfileScreen({
             title="Editar dívida"
             initial={{
               title: target.title,
-              total: String(Math.round(target.amount * target.total * 100) / 100),
+              total: moneyStr(Math.round(target.amount * target.total * 100) / 100),
               installments: String(target.total),
               card: target.cardId,
               date: target.date ?? "",
             }}
             fields={[
               { key: "title", label: "Descrição", type: "text" },
-              { key: "total", label: "Valor total (R$)", type: "number", step: "0.01" },
+              { key: "total", label: "Valor total (R$)", type: "money" },
               { key: "installments", label: "Parcelas", type: "number", step: "1" },
               {
                 key: "card",
@@ -919,10 +919,10 @@ export default function DebtorProfileScreen({
             </p>
             <input
               autoFocus
-              inputMode="decimal"
+              inputMode="numeric"
               value={advanceValue}
-              onChange={(e) => setAdvanceValue(e.target.value)}
-              placeholder="Valor recebido, ex.: 467"
+              onChange={(e) => setAdvanceValue(maskMoney(e.target.value))}
+              placeholder="0,00"
               style={{ width: "100%", background: S.surface2, border: `1px solid ${S.border}`, borderRadius: 12, padding: "13px 14px", color: S.text, fontSize: 16, outline: "none" }}
             />
             {(friend.credit ?? 0) > 0 && (

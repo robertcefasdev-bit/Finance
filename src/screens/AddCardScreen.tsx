@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Card, Screen } from "../data/mockData";
 import { S } from "../theme";
+import { maskMoney, moneyStr, parseMoney } from "../utils/finance";
 
 
 const PRESET_COLORS = [
@@ -65,7 +66,7 @@ export default function AddCardScreen({
       setShowBankInput(true);
       setCustomBank(editingCard.bank);
     }
-    setLimit(String(editingCard.limit));
+    setLimit(moneyStr(editingCard.limit));
     setClosing(String(editingCard.closing));
     setDue(String(editingCard.due));
     setColor(editingCard.color);
@@ -79,7 +80,7 @@ export default function AddCardScreen({
       id: editingCard?.id ?? `card-${Date.now()}`,
       name: cardName.trim(),
       bank: finalBank,
-      limit: parseFloat(limit),
+      limit: parseMoney(limit),
       closing: parseInt(closing, 10),
       due: parseInt(due, 10),
       color,
@@ -280,7 +281,7 @@ export default function AddCardScreen({
                 }}
               >
                 {limit
-                  ? `R$ ${parseFloat(limit).toLocaleString("pt-BR")}`
+                  ? `R$ ${parseMoney(limit).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
                   : "R$ --"}
               </p>
             </div>
@@ -457,10 +458,10 @@ export default function AddCardScreen({
             Limite Total (R$)
           </label>
           <input
-            type="number"
+            inputMode="numeric"
             value={limit}
-            onChange={(e) => setLimit(e.target.value)}
-            placeholder="10000"
+            onChange={(e) => setLimit(maskMoney(e.target.value))}
+            placeholder="0,00"
             style={{
               width: "100%",
               background: S.surface,

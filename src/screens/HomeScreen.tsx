@@ -11,7 +11,7 @@ import {
   Cell,
 } from "recharts";
 import { fmt } from "../data/mockData";
-import { cardCycle, cardCycleText, commitColor, commitLabel, currentYM, expenseStart, invoiceMonth, invoiceNote, lastOwnMonthOffset, monthlyAmount, ownMonthAmount, ymLabel } from "../utils/finance";
+import { cardCycle, cardCycleText, commitColor, commitLabel, currentYM, expenseStart, invoiceMonth, invoiceNote, lastOwnMonthOffset, monthlyAmount, ownMonthAmount, ymLabel, moneyStr } from "../utils/finance";
 import type {
   Screen,
   Card,
@@ -166,6 +166,7 @@ export default function HomeScreen({
   const [selectedOff, setSelectedOff] = useState<number | null>(null);
   const [riskOpen, setRiskOpen] = useState(false);
   const [cardFilter, setCardFilter] = useState("all");
+  const [visibleCount, setVisibleCount] = useState(8);
   const [chartType, setChartType] = useState<"pie" | "line">("pie");
 
   const totalOwed = friends.reduce((s, f) => s + f.totalOwed, 0);
@@ -195,20 +196,20 @@ export default function HomeScreen({
   const shortMonth = (d: Date) =>
     `${["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"][d.getMonth()]} ${d.getFullYear()}`;
   const monthName = (d: Date) => d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
-  const chartData = Array.from({ length: 6 }, (_, index) => ({
-    month: `${["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"][new Date().getMonth() + index >= 12 ? new Date().getMonth() + index - 12 : new Date().getMonth() + index]} ${new Date().getFullYear() + (new Date().getMonth() + index >= 12 ? 1 : 0)}`,
-    salary,
-    expenses: baseExpenses + activeFixedExpenses,
-  }));
+  const chartData = Array.from({ length: Math.max(6, riskMonths.length) }, (_, index) => {
+    const ref = new Date(new Date().getFullYear(), new Date().getMonth() + index, 1);
+    const own = index === 0 ? baseExpenses : ownMonthAmount(expenses, ref);
+    return { month: shortMonth(ref), salary, expenses: own + activeFixedExpenses };
+  });
   const pieData = [
     {
       name: "Disponível",
-      value: Math.max(salary - totalExpenses, 0),
+      value: Math.max(salary - focusMonth.total, 0),
       color: S.green,
     },
     {
       name: "Comprometido",
-      value: Math.min(totalExpenses, Math.max(salary, 1)),
+      value: Math.min(focusMonth.total, Math.max(salary, 1)),
       color: S.purple,
     },
   ];
@@ -233,6 +234,13 @@ export default function HomeScreen({
   const hasCash = visibleExpenses.some((e) => e.cardId === "cash");
   const filteredExpenses =
     cardFilter === "all" ? visibleExpenses : visibleExpenses.filter((e) => e.cardId === cardFilter);
+  // mais recentes primeiro; as fixas (sem data) ficam por último
+  const sortedExpenses = [...filteredExpenses].sort((a, b) => {
+    if (!a.date) return b.date ? 1 : 0;
+    if (!b.date) return -1;
+    return b.date.localeCompare(a.date);
+  });
+  const shownExpenses = sortedExpenses.slice(0, visibleCount);
   const filteredOpenTotal = filteredExpenses
     .filter((e) => !e.paid)
     .reduce((sum, e) => sum + (e.kind === "fixed" ? e.amount : monthlyAmount(e)), 0);
@@ -479,7 +487,7 @@ export default function HomeScreen({
           }}
         >
           <p style={{ color: S.text, fontWeight: 600, fontSize: 15 }}>
-            Visão Geral
+            Visão Geral{pillMonths.length > 0 ? ` · ${shortMonth(focusMonth.ref)}` : ""}
           </p>
           <div
             style={{
@@ -685,7 +693,10 @@ export default function HomeScreen({
             return (
               <button
                 key={chip.id}
-                onClick={() => setCardFilter(chip.id)}
+                onClick={() => {
+                  setCardFilter(chip.id);
+                  setVisibleCount(8);
+                }}
                 style={{
                   flexShrink: 0,
                   whiteSpace: "nowrap",
@@ -712,7 +723,7 @@ export default function HomeScreen({
         <StatementList
           undatedLabel="Despesas fixas"
           emptyText="Nenhuma despesa ainda."
-          rows={filteredExpenses.map((exp): StatementRow => {
+          rows={shownExpenses.map((exp): StatementRow => {
             const card = cards.find((c) => c.id === exp.cardId);
             const isFixed = exp.kind === "fixed";
             const where = isFixed
@@ -774,6 +785,26 @@ export default function HomeScreen({
             };
           })}
         />
+        {sortedExpenses.length > 8 && (
+          <div style={{ display: "flex", justifyContent: "center", gap: 10, marginTop: 4 }}>
+            {visibleCount < sortedExpenses.length && (
+              <button
+                onClick={() => setVisibleCount((n) => n + 8)}
+                style={{ padding: "9px 18px", borderRadius: 999, border: `1px solid ${S.border}`, background: S.surface, color: S.purple, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+              >
+                Ver mais ({sortedExpenses.length - visibleCount})
+              </button>
+            )}
+            {visibleCount > 8 && (
+              <button
+                onClick={() => setVisibleCount(8)}
+                style={{ padding: "9px 18px", borderRadius: 999, border: `1px solid ${S.border}`, background: "none", color: S.muted, fontSize: 12, cursor: "pointer" }}
+              >
+                Ver menos
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {editingExpense && (
@@ -781,7 +812,7 @@ export default function HomeScreen({
           title="Editar despesa"
           initial={{
             title: editingExpense.title,
-            amount: String(editingExpense.amount),
+            amount: moneyStr(editingExpense.amount),
             installments: String(editingExpense.installments ?? 1),
             category: editingExpense.category,
             card: editingExpense.cardId,
@@ -789,7 +820,7 @@ export default function HomeScreen({
           }}
           fields={[
             { key: "title", label: "Descrição", type: "text" },
-            { key: "amount", label: "Valor total (sua parte, R$)", type: "number", step: "0.01" },
+            { key: "amount", label: "Valor total (sua parte, R$)", type: "money" },
             { key: "installments", label: "Parcelas", type: "number", step: "1" },
             { key: "category", label: "Categoria", type: "text", suggestions: CATEGORIES.map((c) => c.label) },
             {

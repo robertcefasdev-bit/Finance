@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { fmt } from "../data/mockData";
-import { invoiceMonth, invoiceNote, localToday } from "../utils/finance";
-import type { Screen, Card, Friend, Expense, Debt } from "../data/mockData";
+import { invoiceMonth, invoiceNote, localToday, maskMoney } from "../utils/finance";
+import type { Screen, Card, Friend, Expense, Debt, FixedExpense } from "../data/mockData";
 import { S } from "../theme";
 
 
@@ -22,6 +22,7 @@ interface Props {
   friends: Friend[];
   cardUsage: Record<string, number>;
   onAddExpense: (expense: Expense) => void;
+  onAddFixedExpense: (expense: FixedExpense) => void;
   onAddDebt: (friendId: string, debt: Debt) => void;
   routeData?: unknown;
   onGoToDebtor?: (s: Screen, data?: unknown) => void;
@@ -33,6 +34,7 @@ export default function AddExpenseScreen({
   friends,
   cardUsage,
   onAddExpense,
+  onAddFixedExpense,
   onAddDebt,
   routeData,
   onGoToDebtor,
@@ -47,6 +49,7 @@ export default function AddExpenseScreen({
   const [splitEnabled, setSplitEnabled] = useState(false);
   const [selectedFriends, setSelectedFriends] = useState<string[]>([]);
   const [installments, setInstallments] = useState("1");
+  const [isFixed, setIsFixed] = useState(false);
   const [title, setTitle] = useState("");
   const [saved, setSaved] = useState(false);
 
@@ -75,6 +78,24 @@ export default function AddExpenseScreen({
     if (!amount || !category || !cardId || overLimit) return;
 
     const parsedAmount = parseFloat(amount.replace(",", ".")) || 0;
+
+    // despesa fixa: entra na lista de fixas (todo mês) e não vira despesa avulsa
+    if (isFixed) {
+      onAddFixedExpense({
+        id: `fixed-${Date.now()}`,
+        name: title.trim() || finalCategory,
+        amount: Math.round(parsedAmount * 100) / 100,
+        active: true,
+        cardId: cardId === "cash" ? undefined : cardId,
+      });
+      setSaved(true);
+      setTimeout(() => {
+        setSaved(false);
+        navigate("home");
+      }, 1500);
+      return;
+    }
+
     const parsedInstallments = parseInt(installments, 10) || 1;
     const isSplit = splitEnabled && selectedFriends.length > 0;
     const myShare = isSplit
@@ -209,9 +230,9 @@ export default function AddExpenseScreen({
               R$
             </span>
             <input
-              type="number"
+              inputMode="numeric"
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={(e) => setAmount(maskMoney(e.target.value))}
               placeholder="0,00"
               style={{
                 width: "100%",
@@ -233,6 +254,59 @@ export default function AddExpenseScreen({
               }}
             />
           </div>
+        </div>
+
+        {/* Despesa fixa? */}
+        <div style={{ marginBottom: 20 }}>
+          <button
+            type="button"
+            onClick={() => setIsFixed((v) => !v)}
+            aria-pressed={isFixed}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              background: S.surface,
+              border: `1px solid ${isFixed ? S.purple : S.border}`,
+              borderRadius: 14,
+              padding: "12px 16px",
+              cursor: "pointer",
+              textAlign: "left",
+            }}
+          >
+            <div>
+              <p style={{ color: S.text, fontSize: 14, fontWeight: 600 }}>🔁 Despesa fixa</p>
+              <p style={{ color: S.muted, fontSize: 11, marginTop: 2 }}>
+                {isFixed ? "Repete todo mês. Vai para a lista de despesas fixas." : "Desligada: é uma compra avulsa ou parcelada."}
+              </p>
+            </div>
+            <span
+              style={{
+                width: 44,
+                height: 26,
+                borderRadius: 13,
+                background: isFixed ? S.purple : S.border,
+                position: "relative",
+                flexShrink: 0,
+                transition: "background 0.2s",
+              }}
+            >
+              <span
+                style={{
+                  position: "absolute",
+                  top: 3,
+                  left: isFixed ? 21 : 3,
+                  width: 20,
+                  height: 20,
+                  borderRadius: "50%",
+                  background: "#fff",
+                  transition: "left 0.2s",
+                }}
+              />
+            </span>
+          </button>
         </div>
 
         {/* Title */}
@@ -340,6 +414,7 @@ export default function AddExpenseScreen({
         </div>
 
         {/* Date */}
+        {!isFixed && (
         <div
           style={{
             marginBottom: 20,
@@ -430,6 +505,7 @@ export default function AddExpenseScreen({
             </select>
           </div>
         </div>
+        )}
 
         {/* Card */}
         <div style={{ marginBottom: 20 }}>
@@ -528,6 +604,7 @@ export default function AddExpenseScreen({
         </div>
 
         {/* Split toggle */}
+        {!isFixed && (
         <div style={{ marginBottom: 20 }}>
           <div
             style={{
@@ -728,8 +805,9 @@ export default function AddExpenseScreen({
             )}
           </div>
         </div>
+        )}
 
-        {invoiceNote(date, selectedCard) && (
+        {!isFixed && invoiceNote(date, selectedCard) && (
           <p style={{ color: S.muted, fontSize: 12, marginBottom: 10, textAlign: "center" }}>
             {invoiceNote(date, selectedCard)}
           </p>

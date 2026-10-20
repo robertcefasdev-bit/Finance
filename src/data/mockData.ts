@@ -727,6 +727,14 @@ export const FUTURE_DATA: Record<
   },
 };
 
+// Modo privacidade: quando ligado, todo valor aparece como "R$ •••"
+let hideValues = false;
+export const setHideValues = (hide: boolean) => {
+  hideValues = hide;
+};
+export const isHidden = () => hideValues;
+
 export function fmt(value: number) {
+  if (hideValues) return "R$ •••";
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }

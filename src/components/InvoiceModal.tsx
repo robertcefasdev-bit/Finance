@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { fmt } from "../data/mockData";
 import type { Card, Expense, FixedExpense, Friend } from "../data/mockData";
-import { invoiceBreakdown, invoiceMonth, localToday, ymLabel } from "../utils/finance";
+import { invoiceBreakdown, invoiceMonth, localToday, maskMoney, moneyStr, ymLabel } from "../utils/finance";
 import { S } from "../theme";
 
 const shift = (ym: string, delta: number) => {
@@ -28,13 +28,13 @@ export default function InvoiceModal({
 }) {
   const [ym, setYm] = useState(invoiceMonth(localToday(), card));
   const stored = card.invoices?.[ym];
-  const [value, setValue] = useState(stored !== undefined ? String(stored) : "");
+  const [value, setValue] = useState(stored !== undefined ? moneyStr(stored) : "");
   const [savedMsg, setSavedMsg] = useState("");
 
   const goTo = (next: string) => {
     setYm(next);
     const v = card.invoices?.[next];
-    setValue(v !== undefined ? String(v) : "");
+    setValue(v !== undefined ? moneyStr(v) : "");
     setSavedMsg("");
   };
 
@@ -78,13 +78,13 @@ export default function InvoiceModal({
             Valor da fatura (do banco)
           </span>
           <input
-            inputMode="decimal"
+            inputMode="numeric"
             value={value}
             onChange={(e) => {
-              setValue(e.target.value);
+              setValue(maskMoney(e.target.value));
               setSavedMsg("");
             }}
-            placeholder="Ex.: 2000"
+            placeholder="0,00"
             style={{ width: "100%", marginTop: 6, background: S.surface2, border: `1px solid ${S.border}`, borderRadius: 12, padding: "12px 14px", color: S.text, fontSize: 16, outline: "none" }}
           />
         </label>
