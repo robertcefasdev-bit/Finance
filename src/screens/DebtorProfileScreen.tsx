@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { fmt } from "../data/mockData";
-import { buildStatement, invoiceMonth, invoiceNote, localToday, paidCount, planAdvance, ymLabel, maskMoney, moneyStr } from "../utils/finance";
+import { friendOwed, buildStatement, invoiceMonth, invoiceNote, localToday, paidCount, planAdvance, ymLabel, maskMoney, moneyStr } from "../utils/finance";
 import type { Card, Friend, Debt, Screen } from "../data/mockData";
 import { getCurrentMonthOwed } from "../utils/finance";
 import { S } from "../theme";
@@ -390,6 +390,23 @@ export default function DebtorProfileScreen({
           <p style={{ color: S.muted, fontSize: 12, marginTop: 4 }}>
             {debts.filter((d) => !d.paid).length} dívida(s) ativa(s)
           </p>
+          {(() => {
+            const owedAll = friendOwed({ ...friend, debts });
+            if (owedAll.future.length === 0) return null;
+            return (
+              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 3 }}>
+                {owedAll.future.map((m) => (
+                  <p key={m.ym} style={{ color: S.muted, fontSize: 12 }}>
+                    Fatura {ymLabel(m.ym)}:{" "}
+                    <span style={{ color: S.purple, fontWeight: 700 }}>{fmt(m.amount)}</span>
+                  </p>
+                ))}
+                <p style={{ color: S.text, fontSize: 12, fontWeight: 700, marginTop: 2 }}>
+                  Total geral: {fmt(owedAll.total)}
+                </p>
+              </div>
+            );
+          })()}
           {(friend.credit ?? 0) > 0 && (
             <p style={{ color: S.green, fontSize: 13, fontWeight: 700, marginTop: 8 }}>
               💰 Saldo a favor: {fmt(friend.credit ?? 0)}

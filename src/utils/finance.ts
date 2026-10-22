@@ -303,6 +303,12 @@ export function buildStatement(friend: Friend, pix: string, ref: Date = new Date
     lines.push("Em aberto:", ...open);
   }
   lines.push("", `Total em aberto: ${brl(getCurrentMonthOwed(friend.debts))}`);
+  const owedAll = friendOwed(friend, ref);
+  if (owedAll.future.length > 0) {
+    lines.push("", "Próximas faturas:");
+    owedAll.future.forEach((item) => lines.push(`• ${ymLabel(item.ym)}: ${brl(item.amount)}`));
+    lines.push("", `Total geral a pagar: ${brl(owedAll.total)}`);
+  }
 
   const ym = `${ref.getFullYear()}-${String(ref.getMonth() + 1).padStart(2, "0")}`;
   const advances = (friend.advances ?? []).filter((a) => a.date.slice(0, 7) === ym);
@@ -483,3 +489,36 @@ export const moneyStr = (n: number) => n.toFixed(2).replace(".", ",");
 
 // Texto do campo -> número ("1234,56" → 1234.56)
 export const parseMoney = (s: string) => parseFloat(s.replace(",", ".")) || 0;
+
+// ---------- Devedor: o que vence agora e o que vem nas próximas faturas ----------
+export function friendOwed(friend: Friend, now: Date = new Date()) {
+  const cur = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
+  const byMonth = new Map<string, number>();
+  for (const debt of friend.debts) {
+    if (debt.paid) continue;
+    for (let k = paidCount(debt) + 1; k <= debt.total; k++) {
+      const idx = monthIndexOf(debt, k);
+      const ym = `${Math.floor(idx / 12)}-${pad((idx % 12) + 1)}`;
+      byMonth.set(ym, (byMonth.get(ym) ?? 0) + debt.amount);
+    }
+  }
+  let dueNow = 0;
+  const future: { ym: string; amount: number }[] = [];
+  [...byMonth.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .forEach(([ym, amount]) => {
+      if (ym <= cur) dueNow += amount;
+      else future.push({ ym, amount: round2(amount) });
+    });
+  dueNow = round2(dueNow);
+  const total = round2(dueNow + future.reduce((sum, item) => sum + item.amount, 0));
+  return { dueNow, total, future, next: future[0] ?? null };
+}
+
+// O valor que aparece em destaque: o do mês atual ou, se não houver, o da próxima fatura
+export function friendHeadline(friend: Friend, now: Date = new Date()) {
+  const owed = friendOwed(friend, now);
+  if (owed.dueNow > 0) return { amount: owed.dueNow, ym: null as string | null, owed };
+  if (owed.next) return { amount: owed.next.amount, ym: owed.next.ym as string | null, owed };
+  return { amount: 0, ym: null as string | null, owed };
+}

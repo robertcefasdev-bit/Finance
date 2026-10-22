@@ -2,6 +2,7 @@ import { useState } from "react";
 import { fmt } from "../data/mockData";
 import type { Friend, Screen } from "../data/mockData";
 import { S } from "../theme";
+import { friendOwed, ymLabel } from "../utils/finance";
 
 
 interface Props {
@@ -24,7 +25,14 @@ export default function DebtorsScreen({
   const [newPhone, setNewPhone] = useState("");
   const [selectedColor, setSelectedColor] = useState("#a855f7");
   const [toast, setToast] = useState("");
-  const totalReceivable = friends.reduce((s, f) => s + f.totalOwed, 0);
+  const owedList = friends.map((f) => ({ f, owed: friendOwed(f) }));
+  const totalReceivable = owedList.reduce((s, x) => s + x.owed.total, 0);
+  const dueNowTotal = owedList.reduce((s, x) => s + x.owed.dueNow, 0);
+  const futureByMonth = new Map<string, number>();
+  owedList.forEach((x) =>
+    x.owed.future.forEach((m) => futureByMonth.set(m.ym, (futureByMonth.get(m.ym) ?? 0) + m.amount)),
+  );
+  const futureMonths = [...futureByMonth.entries()].sort(([a], [b]) => a.localeCompare(b));
 
   const COLORS = [
     "#a855f7",
@@ -165,9 +173,21 @@ export default function DebtorsScreen({
           {fmt(totalReceivable)}
         </p>
         <p style={{ color: S.muted, fontSize: 12, marginTop: 4 }}>
-          {friends.filter((f) => f.status === "pending").length} devedor(es) com
+          {owedList.filter((x) => x.owed.total > 0).length} devedor(es) com
           pendências
         </p>
+        {totalReceivable > 0 && (
+          <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 4 }}>
+            <p style={{ color: S.text, fontSize: 12 }}>
+              Este mês: <span style={{ color: S.orange, fontWeight: 700 }}>{fmt(dueNowTotal)}</span>
+            </p>
+            {futureMonths.map(([ym, amount]) => (
+              <p key={ym} style={{ color: S.text, fontSize: 12 }}>
+                Fatura {ymLabel(ym)}: <span style={{ color: S.purple, fontWeight: 700 }}>{fmt(amount)}</span>
+              </p>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* List */}
@@ -185,7 +205,7 @@ export default function DebtorsScreen({
           {friends.length} devedores cadastrados
         </p>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {friends.map((f) => (
+          {owedList.map(({ f, owed }) => (
             <div
               key={f.id}
               style={{
@@ -231,17 +251,24 @@ export default function DebtorsScreen({
                       📱 {f.phone}
                     </p>
                   )}
+                  {owed.total > 0 && (
+                    <p style={{ color: S.muted, fontSize: 11, marginTop: 4, lineHeight: 1.5 }}>
+                      {owed.dueNow > 0 ? `Este mês ${fmt(owed.dueNow)}` : ""}
+                      {owed.dueNow > 0 && owed.future.length > 0 ? " · " : ""}
+                      {owed.future.map((m) => `${ymLabel(m.ym)} ${fmt(m.amount)}`).join(" · ")}
+                    </p>
+                  )}
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <p
                     style={{
-                      color: f.totalOwed > 0 ? S.green : S.muted,
+                      color: owed.total > 0 ? S.green : S.muted,
                       fontSize: 16,
                       fontWeight: 700,
                       fontFamily: "'JetBrains Mono', monospace",
                     }}
                   >
-                    {fmt(f.totalOwed)}
+                    {fmt(owed.total)}
                   </p>
                   <span
                     style={{
@@ -249,13 +276,12 @@ export default function DebtorsScreen({
                       borderRadius: 6,
                       fontSize: 9,
                       fontWeight: 600,
-                      background:
-                        f.status === "paid" ? `${S.green}20` : `${S.orange}20`,
-                      border: `1px solid ${f.status === "paid" ? `${S.green}40` : `${S.orange}40`}`,
-                      color: f.status === "paid" ? S.green : S.orange,
+                      background: `${owed.total === 0 ? S.green : owed.dueNow > 0 ? S.orange : S.purple}20`,
+                      border: `1px solid ${owed.total === 0 ? S.green : owed.dueNow > 0 ? S.orange : S.purple}40`,
+                      color: owed.total === 0 ? S.green : owed.dueNow > 0 ? S.orange : S.purple,
                     }}
                   >
-                    {f.status === "paid" ? "Em dia" : "Pendente"}
+                    {owed.total === 0 ? "Em dia" : owed.dueNow > 0 ? "Pendente" : "Próx. fatura"}
                   </span>
                 </div>
               </div>

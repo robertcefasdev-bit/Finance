@@ -11,7 +11,7 @@ import {
   Cell,
 } from "recharts";
 import { fmt } from "../data/mockData";
-import { cardCycle, cardCycleText, commitColor, commitLabel, currentYM, expenseStart, invoiceMonth, invoiceNote, lastOwnMonthOffset, monthlyAmount, ownMonthAmount, ymLabel, moneyStr } from "../utils/finance";
+import { friendHeadline, cardCycle, cardCycleText, commitColor, commitLabel, currentYM, expenseStart, invoiceMonth, invoiceNote, lastOwnMonthOffset, monthlyAmount, ownMonthAmount, ymLabel, moneyStr } from "../utils/finance";
 import type {
   Screen,
   Card,
@@ -169,7 +169,15 @@ export default function HomeScreen({
   const [visibleCount, setVisibleCount] = useState(8);
   const [chartType, setChartType] = useState<"pie" | "line">("pie");
 
-  const totalOwed = friends.reduce((s, f) => s + f.totalOwed, 0);
+  // devedores: valor do mês atual ou, se não houver, o da próxima fatura
+  const headlines = friends.map((f) => ({ f, head: friendHeadline(f) }));
+  const totalOwed = headlines.reduce((s, x) => s + x.head.amount, 0);
+  const owedNote = headlines.some((x) => x.head.amount > 0 && !x.head.ym)
+    ? "este mês"
+    : (headlines
+        .map((x) => x.head.ym)
+        .filter((ym): ym is string => Boolean(ym))
+        .sort()[0] ?? null);
   const activeFixedExpenses = fixedExpenses
     .filter((expense) => expense.active)
     .reduce((sum, expense) => sum + expense.amount, 0);
@@ -890,7 +898,7 @@ export default function HomeScreen({
                 fontWeight: 600,
               }}
             >
-              A receber: {fmt(totalOwed)}
+              A receber: {fmt(totalOwed)}{owedNote ? ` · ${owedNote === "este mês" ? owedNote : `fatura ${ymLabel(owedNote)}`}` : ""}
             </p>
           </div>
           <button
@@ -918,7 +926,7 @@ export default function HomeScreen({
           }}
           className="scrollbar-hide"
         >
-          {friends.map((f) => {
+          {headlines.map(({ f, head }) => {
             // aviso "!" quando alguma fatura fechada está perto de vencer
             const soonDue = cards.some((c) => {
               const cycle = cardCycle(c);
@@ -1010,21 +1018,32 @@ export default function HomeScreen({
                     fontWeight: 700,
                   }}
                 >
-                  {fmt(f.totalOwed)}
+                  {fmt(head.amount)}
                 </p>
-                <span
-                  style={{
-                    padding: "2px 8px",
-                    borderRadius: 6,
-                    background: f.status === "paid" ? "#22c55e20" : "#f59e0b20",
-                    border: `1px solid ${f.status === "paid" ? "#22c55e40" : "#f59e0b40"}`,
-                    color: f.status === "paid" ? S.green : "#f59e0b",
-                    fontSize: 9,
-                    fontWeight: 600,
-                  }}
-                >
-                  {f.status === "paid" ? "Em dia" : "Pendente"}
-                </span>
+                {(() => {
+                  const upcoming = head.amount > 0 && head.ym;
+                  const tone = head.amount === 0 ? S.green : upcoming ? S.purple : "#f59e0b";
+                  return (
+                    <span
+                      style={{
+                        padding: "2px 8px",
+                        borderRadius: 6,
+                        background: `${tone}20`,
+                        border: `1px solid ${tone}40`,
+                        color: tone,
+                        fontSize: 9,
+                        fontWeight: 600,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {head.amount === 0
+                        ? "Em dia"
+                        : upcoming
+                          ? ymLabel(head.ym as string)
+                          : "Pendente"}
+                    </span>
+                  );
+                })()}
               </button>
             );
           })}
