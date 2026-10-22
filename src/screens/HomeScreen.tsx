@@ -11,7 +11,7 @@ import {
   Cell,
 } from "recharts";
 import { fmt } from "../data/mockData";
-import { friendHeadline, cardCycle, cardCycleText, commitColor, commitLabel, currentYM, expenseStart, invoiceMonth, invoiceNote, lastOwnMonthOffset, monthlyAmount, ownMonthAmount, ymLabel, moneyStr } from "../utils/finance";
+import { receivableHeadline, cardCycle, cardCycleText, commitColor, commitLabel, currentYM, expenseStart, invoiceMonth, invoiceNote, lastOwnMonthOffset, monthlyAmount, ownMonthAmount, ymLabel, moneyStr } from "../utils/finance";
 import type {
   Screen,
   Card,
@@ -170,14 +170,10 @@ export default function HomeScreen({
   const [chartType, setChartType] = useState<"pie" | "line">("pie");
 
   // devedores: valor do mês atual ou, se não houver, o da próxima fatura
-  const headlines = friends.map((f) => ({ f, head: friendHeadline(f) }));
-  const totalOwed = headlines.reduce((s, x) => s + x.head.amount, 0);
-  const owedNote = headlines.some((x) => x.head.amount > 0 && !x.head.ym)
-    ? "este mês"
-    : (headlines
-        .map((x) => x.head.ym)
-        .filter((ym): ym is string => Boolean(ym))
-        .sort()[0] ?? null);
+  const receivable = receivableHeadline(friends);
+  const headlines = friends.map((f, i) => ({ f, head: receivable.heads[i] }));
+  const totalOwed = receivable.total;
+  const owedNote = receivable.note;
   const activeFixedExpenses = fixedExpenses
     .filter((expense) => expense.active)
     .reduce((sum, expense) => sum + expense.amount, 0);

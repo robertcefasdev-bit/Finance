@@ -522,3 +522,17 @@ export function friendHeadline(friend: Friend, now: Date = new Date()) {
   if (owed.next) return { amount: owed.next.amount, ym: owed.next.ym as string | null, owed };
   return { amount: 0, ym: null as string | null, owed };
 }
+
+// Total a receber em destaque (igual na Home e na tela de devedores):
+// para cada devedor, o mês atual ou, se não houver, a próxima fatura
+export function receivableHeadline(friends: Friend[], now: Date = new Date()) {
+  const heads = friends.map((friend) => friendHeadline(friend, now));
+  const total = round2(heads.reduce((sum, h) => sum + h.amount, 0));
+  const anyNow = heads.some((h) => h.amount > 0 && !h.ym);
+  const firstYm =
+    heads
+      .map((h) => h.ym)
+      .filter((ym): ym is string => Boolean(ym))
+      .sort()[0] ?? null;
+  return { total, note: anyNow ? ("este mês" as string) : firstYm, heads };
+}

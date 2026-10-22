@@ -2,7 +2,8 @@ import { useState } from "react";
 import { fmt } from "../data/mockData";
 import type { Friend, Screen } from "../data/mockData";
 import { S } from "../theme";
-import { friendOwed, ymLabel } from "../utils/finance";
+import { receivableHeadline, ymLabel } from "../utils/finance";
+import Collapsible, { OwedBreakdown } from "../components/Collapsible";
 
 
 interface Props {
@@ -25,14 +26,21 @@ export default function DebtorsScreen({
   const [newPhone, setNewPhone] = useState("");
   const [selectedColor, setSelectedColor] = useState("#a855f7");
   const [toast, setToast] = useState("");
-  const owedList = friends.map((f) => ({ f, owed: friendOwed(f) }));
-  const totalReceivable = owedList.reduce((s, x) => s + x.owed.total, 0);
-  const dueNowTotal = owedList.reduce((s, x) => s + x.owed.dueNow, 0);
+  const receivable = receivableHeadline(friends);
+  const owedList = friends.map((f, i) => ({
+    f,
+    head: receivable.heads[i],
+    owed: receivable.heads[i].owed,
+  }));
+  const totalAll = owedList.reduce((sum, x) => sum + x.owed.total, 0);
+  const dueNowTotal = owedList.reduce((sum, x) => sum + x.owed.dueNow, 0);
   const futureByMonth = new Map<string, number>();
   owedList.forEach((x) =>
     x.owed.future.forEach((m) => futureByMonth.set(m.ym, (futureByMonth.get(m.ym) ?? 0) + m.amount)),
   );
-  const futureMonths = [...futureByMonth.entries()].sort(([a], [b]) => a.localeCompare(b));
+  const futureMonths = [...futureByMonth.entries()]
+    .sort(([x], [y]) => x.localeCompare(y))
+    .map(([ym, amount]) => ({ ym, amount: Math.round(amount * 100) / 100 }));
 
   const COLORS = [
     "#a855f7",
@@ -170,23 +178,21 @@ export default function DebtorsScreen({
             letterSpacing: "-0.02em",
           }}
         >
-          {fmt(totalReceivable)}
+          {fmt(receivable.total)}
         </p>
         <p style={{ color: S.muted, fontSize: 12, marginTop: 4 }}>
           {owedList.filter((x) => x.owed.total > 0).length} devedor(es) com
           pendências
         </p>
-        {totalReceivable > 0 && (
-          <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 4 }}>
-            <p style={{ color: S.text, fontSize: 12 }}>
-              Este mês: <span style={{ color: S.orange, fontWeight: 700 }}>{fmt(dueNowTotal)}</span>
-            </p>
-            {futureMonths.map(([ym, amount]) => (
-              <p key={ym} style={{ color: S.text, fontSize: 12 }}>
-                Fatura {ymLabel(ym)}: <span style={{ color: S.purple, fontWeight: 700 }}>{fmt(amount)}</span>
-              </p>
-            ))}
-          </div>
+        {receivable.note && (
+          <p style={{ color: S.purple, fontSize: 12, marginTop: 4, fontWeight: 600 }}>
+            {receivable.note === "este mês" ? "Referente a este mês" : `Referente à fatura de ${ymLabel(receivable.note)}`}
+          </p>
+        )}
+        {totalAll > 0 && futureMonths.length > 0 && (
+          <Collapsible title="Próximas faturas">
+            <OwedBreakdown dueNow={dueNowTotal} future={futureMonths} total={Math.round(totalAll * 100) / 100} />
+          </Collapsible>
         )}
       </div>
 
@@ -205,7 +211,7 @@ export default function DebtorsScreen({
           {friends.length} devedores cadastrados
         </p>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {owedList.map(({ f, owed }) => (
+          {owedList.map(({ f, owed, head }) => (
             <div
               key={f.id}
               style={{
@@ -251,24 +257,17 @@ export default function DebtorsScreen({
                       📱 {f.phone}
                     </p>
                   )}
-                  {owed.total > 0 && (
-                    <p style={{ color: S.muted, fontSize: 11, marginTop: 4, lineHeight: 1.5 }}>
-                      {owed.dueNow > 0 ? `Este mês ${fmt(owed.dueNow)}` : ""}
-                      {owed.dueNow > 0 && owed.future.length > 0 ? " · " : ""}
-                      {owed.future.map((m) => `${ymLabel(m.ym)} ${fmt(m.amount)}`).join(" · ")}
-                    </p>
-                  )}
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <p
                     style={{
-                      color: owed.total > 0 ? S.green : S.muted,
+                      color: head.amount > 0 ? S.green : S.muted,
                       fontSize: 16,
                       fontWeight: 700,
                       fontFamily: "'JetBrains Mono', monospace",
                     }}
                   >
-                    {fmt(owed.total)}
+                    {fmt(head.amount)}
                   </p>
                   <span
                     style={{
@@ -276,15 +275,23 @@ export default function DebtorsScreen({
                       borderRadius: 6,
                       fontSize: 9,
                       fontWeight: 600,
-                      background: `${owed.total === 0 ? S.green : owed.dueNow > 0 ? S.orange : S.purple}20`,
-                      border: `1px solid ${owed.total === 0 ? S.green : owed.dueNow > 0 ? S.orange : S.purple}40`,
-                      color: owed.total === 0 ? S.green : owed.dueNow > 0 ? S.orange : S.purple,
+                      background: `${head.amount === 0 ? S.green : head.ym ? S.purple : S.orange}20`,
+                      border: `1px solid ${head.amount === 0 ? S.green : head.ym ? S.purple : S.orange}40`,
+                      color: head.amount === 0 ? S.green : head.ym ? S.purple : S.orange,
                     }}
                   >
-                    {owed.total === 0 ? "Em dia" : owed.dueNow > 0 ? "Pendente" : "Próx. fatura"}
+                    {head.amount === 0 ? "Em dia" : head.ym ? ymLabel(head.ym) : "Pendente"}
                   </span>
                 </div>
               </div>
+
+              {owed.future.length > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  <Collapsible title="Ver faturas">
+                    <OwedBreakdown dueNow={owed.dueNow} future={owed.future} total={owed.total} />
+                  </Collapsible>
+                </div>
+              )}
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button

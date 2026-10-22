@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { fmt } from "../data/mockData";
-import { friendOwed, buildStatement, invoiceMonth, invoiceNote, localToday, paidCount, planAdvance, ymLabel, maskMoney, moneyStr } from "../utils/finance";
+import { friendHeadline, friendOwed, buildStatement, invoiceMonth, invoiceNote, localToday, paidCount, planAdvance, ymLabel, maskMoney, moneyStr } from "../utils/finance";
 import type { Card, Friend, Debt, Screen } from "../data/mockData";
 import { getCurrentMonthOwed } from "../utils/finance";
 import { S } from "../theme";
 import StatementList, { type StatementRow } from "../components/Statement";
 import EditModal from "../components/EditModal";
+import Collapsible, { OwedBreakdown } from "../components/Collapsible";
 import MoreMenu from "../components/MoreMenu";
 
 
@@ -91,6 +92,7 @@ export default function DebtorProfileScreen({
     (d) => d.paid && (!d.paidMonth || d.paidMonth === currentMonth),
   );
   const totalOwed = getCurrentMonthOwed(debts);
+  const headline = friendHeadline({ ...friend, debts });
   const parsedTotalAmount = newAmount
     ? parseFloat(newAmount.replace(",", ".")) || 0
     : 0;
@@ -385,28 +387,25 @@ export default function DebtorProfileScreen({
               letterSpacing: "-0.02em",
             }}
           >
-            {fmt(totalOwed)}
+            {fmt(headline.amount)}
           </p>
+          {headline.ym && (
+            <p style={{ color: S.purple, fontSize: 12, fontWeight: 600, marginTop: 2 }}>
+              Fatura de {ymLabel(headline.ym)}
+            </p>
+          )}
           <p style={{ color: S.muted, fontSize: 12, marginTop: 4 }}>
             {debts.filter((d) => !d.paid).length} dívida(s) ativa(s)
           </p>
-          {(() => {
-            const owedAll = friendOwed({ ...friend, debts });
-            if (owedAll.future.length === 0) return null;
-            return (
-              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 3 }}>
-                {owedAll.future.map((m) => (
-                  <p key={m.ym} style={{ color: S.muted, fontSize: 12 }}>
-                    Fatura {ymLabel(m.ym)}:{" "}
-                    <span style={{ color: S.purple, fontWeight: 700 }}>{fmt(m.amount)}</span>
-                  </p>
-                ))}
-                <p style={{ color: S.text, fontSize: 12, fontWeight: 700, marginTop: 2 }}>
-                  Total geral: {fmt(owedAll.total)}
-                </p>
-              </div>
-            );
-          })()}
+          {headline.owed.future.length > 0 && (
+            <Collapsible title="Próximas faturas">
+              <OwedBreakdown
+                dueNow={headline.owed.dueNow}
+                future={headline.owed.future}
+                total={headline.owed.total}
+              />
+            </Collapsible>
+          )}
           {(friend.credit ?? 0) > 0 && (
             <p style={{ color: S.green, fontSize: 13, fontWeight: 700, marginTop: 8 }}>
               💰 Saldo a favor: {fmt(friend.credit ?? 0)}
